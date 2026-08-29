@@ -1,13 +1,13 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=79';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=79';
-import { localSession } from './session.js?v=79';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=79';
-import { buildGuide } from './guide.js?v=79';
-import { createBoardView } from './board.js?v=79';
-import { SFX, setEnabled } from './sound.js?v=79';
+import { SEATS } from '../engine/src/board.mjs?v=93';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=93';
+import { localSession } from './session.js?v=93';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=93';
+import { buildGuide } from './guide.js?v=93';
+import { createBoardView } from './board.js?v=93';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=93';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -19,7 +19,7 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx']
   .map(id => [id, document.getElementById(id)]));
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
@@ -248,9 +248,11 @@ const OUTCOME_TEXT = {
   attackerDead: '自己的棋子陣亡', bothDead: '同歸於盡',
 };
 // 同歸於盡多半是炸彈或同階互撞，用爆炸聲
+// 只有「碰到」才有聲音；單純移動不再額外播一次（鐵軌聲已經在走的時候播了）
 const SFX_BY_OUTCOME = {
-  moved: SFX.move, defenderDead: SFX.capture,
-  attackerDead: SFX.bounce, bothDead: SFX.explode,
+  defenderDead: SFX.capture,
+  attackerDead: SFX.bounce,
+  bothDead: SFX.explode,
 };
 
 async function doMove(seat, from, to) {
@@ -263,8 +265,11 @@ async function doMove(seat, from, to) {
   moves = []; selected = null; lastMove = null;
   // 動畫期間畫的是舊盤面，並把移動中的那顆藏起來（由分身代勞）
   view.render({ board: beforeBoard, mySeats: [viewSeat()], selected: null, moves: [], hide: [from], viewerSeat: viewSeat() });
-  (SFX_BY_OUTCOME[move.outcome] ?? SFX.move)(path.length - 1, view.STEP_MS);
+  // 走的過程放鐵軌聲；**輸贏的聲音要等碰到才播**。
+  // 原本兩種都在動畫開始前一起播，等於棋子還沒走到就先知道結果了（Lynch 指出這是最嚴重的問題）。
+  SFX.move(path.length - 1, view.STEP_MS);
   await view.animateMove({ from, to, seat, outcome: move.outcome, piece, path });
+  (SFX_BY_OUTCOME[move.outcome] ?? null)?.();
 
   lastMove = { from, to, seat, path };                       // 留下痕跡，讓大家看清楚誰動了什麼
   // 棋譜含實際身分（連線層才知道），事後才分析得出「這一步好不好」
@@ -492,8 +497,61 @@ function showResult() {
       : `${win ? '你和對家' : '左右兩家'}拿下了對方兩面軍旗　共 ${S.plies} 步`;
   els.overlay.hidden = false;
   (draw ? SFX.flag : (win ? SFX.victory : SFX.defeat))();
+  showStats();
 }
 els.overlayAgain.addEventListener('click', () => { els.overlay.hidden = true; newGame(); });
+
+// 對戰統計：結束後附在結果畫面下方。
+// Lynch 要的三項：殘子（1/2/3）、出兵勝率、炸彈換到 1/2 的獎勵。
+async function showStats() {
+  let box = document.getElementById('stats');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'stats';
+    box.className = 'stats';
+    els.overlay.querySelector('.overlay-card')?.appendChild(box)
+      ?? els.overlay.appendChild(box);
+  }
+  box.replaceChildren();
+  let st;
+  try { st = await session.stats(0); } catch { return; }
+
+  const row = (label, value, note = '') => {
+    const li = document.createElement('li');
+    const k = document.createElement('span');
+    k.className = 'stats-k';
+    k.textContent = label;
+    const v = document.createElement('span');
+    v.className = 'stats-v';
+    v.textContent = value;
+    li.append(k, v);
+    if (note) {
+      const n = document.createElement('span');
+      n.className = 'stats-note';
+      n.textContent = note;
+      li.append(n);
+    }
+    return li;
+  };
+  const big = (o) => `${o.司令 ? '司令×' + o.司令 + '　' : ''}${o.軍長 ? '軍長×' + o.軍長 + '　' : ''}${o.師長 ? '師長×' + o.師長 : ''}`.trim() || '全滅';
+
+  const ul = document.createElement('ul');
+  ul.className = 'stats-list';
+  ul.append(
+    row('我方殘存大子', big(st.alive.mine), '你和對家兩家合計'),
+    row('敵方殘存大子', big(st.alive.foe), '左右兩家合計'),
+    row('出兵勝率', st.winRate == null ? '—' : `${Math.round(st.winRate * 100)}%`,
+      st.attacks ? `出手 ${st.attacks}　吃掉 ${st.won}　同歸於盡 ${st.traded}　陣亡 ${st.lost}` : '這局沒有出手'),
+    row('總手數', String(st.plies)),
+  );
+  if (st.bombBonus) {
+    ul.append(row('炸彈獎勵', `＋${st.bombBonus}`, `炸掉${st.bombKills.join('、')}——全場最划算的一擊`));
+  }
+  const h = document.createElement('div');
+  h.className = 'stats-title';
+  h.textContent = '本局統計';
+  box.append(h, ul);
+}
 
 // 把整局棋譜存起來（含開局佈陣與每一步），最多留 10 局。
 // 這是之後分析「人類怎麼下」的原料——沒有棋譜就只能憑印象猜。
@@ -715,6 +773,56 @@ function openGuide() {
   });
 }
 els.guide.addEventListener('click', openGuide);
+
+// 音效試聽：每個事件都有幾種版本，聽了直接選。選擇存在瀏覽器裡。
+const SFX_EVENTS = [
+  ['move', '出兵移動', '走的過程。想要更像火車就選第二個。'],
+  ['capture', '吃掉對方（贏）', '併吞的聲音，要聽起來開心。'],
+  ['bounce', '自己陣亡（輸）', '撞到冰塊或金屬。'],
+  ['explode', '同歸於盡（和）', '跟炸彈一樣的爆炸聲。'],
+  ['alarm', '司令陣亡、軍旗顯露', '要有威嚇感的「燈燈燈」。'],
+  ['flag', '滅掉一家', '要有儀式感。'],
+];
+els.sfx.addEventListener('click', () => {
+  const wrap = document.createElement('div');
+  wrap.className = 'sfxpick';
+  const chosen = getChoice();
+  for (const [key, label, note] of SFX_EVENTS) {
+    const box = document.createElement('div');
+    box.className = 'sfx-group';
+    const h = document.createElement('div');
+    h.className = 'sfx-title';
+    h.textContent = label;
+    const n = document.createElement('div');
+    n.className = 'modal-note';
+    n.textContent = note;
+    box.append(h, n);
+    (VARIANTS[key] ?? []).forEach((v, i) => {
+      const row = document.createElement('label');
+      row.className = 'sfx-row';
+      const r = document.createElement('input');
+      r.type = 'radio'; r.name = `sfx-${key}`;
+      r.checked = (chosen[key] ?? 0) === i;
+      r.addEventListener('change', () => { setVariant(key, i); preview(key, i); });
+      const t = document.createElement('span');
+      t.className = 'sfx-name';
+      t.textContent = v.name;
+      const play = document.createElement('button');
+      play.className = 'btn sfx-play';
+      play.type = 'button';
+      play.textContent = '試聽';
+      play.addEventListener('click', (e) => { e.preventDefault(); preview(key, i); });
+      row.append(r, t, play);
+      box.append(row);
+    });
+    wrap.append(box);
+  }
+  showModal({
+    title: '音效：聽聽看，選你喜歡的',
+    body: wrap,
+    actions: [{ label: '完成', primary: true, onClick: closeModal }],
+  });
+});
 
 els.btnConfirm.addEventListener('click', confirmSetup);
 els.revealAll.addEventListener('change', sync);

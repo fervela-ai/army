@@ -72,7 +72,10 @@ body {
 
 .stage { display: grid; place-items: center; min-height: 0; }
 .board { width: 100%; height: 100%; max-height: 100%;
-  touch-action: none;              /* 不讓拖曳被當成捲動或縮放手勢 */
+  /* 只擋單指拖曳（那是佈陣要用的），把**雙指縮放交還給瀏覽器**。
+     原本寫 none 會把 pinch-zoom 一起擋掉——手機單格只有 18.3px，
+     玩家連放大來看都做不到。 */
+  touch-action: pinch-zoom;
   -webkit-tap-highlight-color: transparent; }
 
 .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
@@ -242,7 +245,9 @@ body {
    所以這裡把含有 .guide 的那張卡片放寬。 */
 .modal-card:has(.guide) { max-width: min(92vw, 820px); max-height: 90vh; overflow: hidden;
   display: flex; flex-direction: column; }
-.modal-card:has(.guide) .modal-body { min-height: 0; display: flex; }
+/* 指南要自己管捲動：.modal-body 預設 max-height: 46vh 會把整份指南夾扁，
+   動畫棋盤的最後一排（軍旗）就被切掉，那整段就白講了。 */
+.modal-card:has(.guide) .modal-body { min-height: 0; display: flex; max-height: none; overflow: visible; }
 .guide { display: flex; flex-direction: column; width: min(86vw, 760px); max-width: 100%; }
 .guide-body, .guide-body * { overflow-wrap: anywhere; }
 /* 分頁要釘在最上面：往下捲內文時，切換的按鈕不能跟著捲不見。 */
@@ -280,7 +285,7 @@ body {
   background: var(--seat-0); color: #fff; border-color: var(--seat-0); font-weight: 700;
 }
 #guide:hover { filter: brightness(1.08); }
-.g-svg { display: block; margin: 10px auto 6px; width: 100%; max-width: 320px; height: auto; }
+.g-svg { display: block; margin: 10px auto 6px; width: 100%; max-width: 420px; height: auto; }
 .g-t { font-size: 11px; fill: var(--ink); }
 .g-t--seat { font-size: 13px; font-weight: 700; fill: #fff; }
 .g-t--tiny { font-size: 10.5px; fill: var(--ink-soft); }
@@ -301,7 +306,9 @@ body {
 .g-ins .ins--tool { fill: var(--seat-0); }
 
 .demo { display: grid; gap: 10px; justify-items: center; }
-.demo-board { width: 100%; max-width: 460px; height: auto; }
+/* 裁切後是「直的」（一家的陣地高大於寬），所以要用高度限制，
+   用寬度限制會超出視窗被切掉——軍旗在最下面那排，切掉就整段白講。 */
+.demo-board { max-height: 48vh; max-width: 100%; width: auto; height: auto; }
 .demo-box { fill: var(--node-fill); stroke: var(--seat-0); stroke-width: 2; }
 .demo-hq { fill: var(--hq-fill); stroke: var(--seat-0); stroke-width: 2.4; }
 .demo-camp { fill: none; stroke: var(--camp-stroke); stroke-width: 3; }
@@ -362,3 +369,20 @@ body {
    6.5px 的中文讀不出來，留著只會蓋掉符號。 */
 .board.is-compact .piece-label { display: none; }
 .board.is-compact .insignia { transform: translateY(6px); }
+
+/* 音效試聽面板 */
+.sfxpick { display: grid; gap: 16px; width: min(88vw, 460px); }
+.sfx-group { display: grid; gap: 4px; }
+.sfx-title { font-weight: 700; font-size: 14px; }
+.sfx-row { display: flex; align-items: center; gap: 10px; padding: 5px 2px; cursor: pointer; }
+.sfx-name { flex: 1; font-size: 13px; }
+.sfx-play { padding: 3px 12px; font-size: 12px; }
+
+/* 本局統計 */
+.stats { margin-top: 18px; text-align: left; }
+.stats-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+.stats-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.stats-list li { display: flex; align-items: baseline; gap: 10px; font-size: 13px; flex-wrap: wrap; }
+.stats-k { color: var(--ink-soft); min-width: 6.5em; }
+.stats-v { font-weight: 700; }
+.stats-note { color: var(--ink-soft); font-size: 12px; }

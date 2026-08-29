@@ -49,7 +49,8 @@ const DEFAULT_W = {
   engIdleEarly: 40,     // 工兵沒任務時不准亂動（開局）
   engIdleLate: 6,       // 殘局解禁
   engReveal: 12,        // 走出普通棋子做不到的彎＝自報身分
-  engProbe: 6,          // 去測疑似地雷（會再乘上地雷機率）
+  engProbe: 6,
+  engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
   bombBig: 22,          // 炸彈換軍長以上
   bombMid: 20,          // 炸彈換師長級
   bombIdle: 12,
@@ -368,9 +369,11 @@ export function engineerReasons(game, seat, memory, from, to) {
   const threats = memory.threats;
   const 逃命 = !!threats && (threats.get(from) ?? 0) > 0 && (threats.get(to) ?? 0) === 0;
 
-  // 朝目標靠近：一步到不了地雷或敵方大本營時，中途那步也算有目的。
-  // 少了這條，工兵永遠踏不出第一步——第一步的落點本身沒有任何理由。
-  const goals = [...(memory.mineSuspect ?? []), ...enemyHQsUnexcluded];
+  // 朝目標靠近：一步到不了「疑似地雷」時，中途那步也算有目的。
+  // ⚠ 這裡只能放疑似地雷，**不能把敵方大本營也算進去**——大本營永遠存在，
+  // 那等於「隨時可以朝敵人家走」，整條鐵律就形同虛設（實測抓到：
+  // 那顆工兵的每一步都變成「有理由」）。往敵人家去只在「賭三角雷」時成立。
+  const goals = [...(memory.mineSuspect ?? [])];
   const near = (id) => (goals.length ? Math.min(...goals.map(g => dist(id, g))) : Infinity);
   const 接近目標 = goals.length > 0 && near(to) < near(from);
 
@@ -387,8 +390,15 @@ export function engineerReasons(game, seat, memory, from, to) {
   const 落點安全 = !threats || (threats.get(to) ?? 0) === 0;
   const 讓路 = 卡住同伴 && 像普通棋子 && 落點安全;
 
-  const 有理由 = 賭三角雷 || 測炸彈 || 拆地雷 || 擋炸彈 || 逃命 || 接近目標 || 讓路;
-  return { 賭三角雷, 測炸彈, 拆地雷, 擋炸彈, 逃命, 接近目標, 讓路, 有理由 };
+  // 進行營：行營是安全區，裡面的棋子吃不到。把全隊最珍貴、又最脆弱的工兵
+  // 收進行營，等於放進保險箱——Lynch：「佔行營是工兵很好的一步，保護自己。」
+  // ⚠ 已經在行營裡就不再給——否則工兵會在五個行營之間換來換去，
+  // 實測工兵的走子比例會從 6% 暴增到 20%。
+  const 進行營 = BOARD.nodes.get(to)?.kind === 'camp' && !game.at.has(to)
+    && BOARD.nodes.get(from)?.kind !== 'camp';
+
+  const 有理由 = 賭三角雷 || 測炸彈 || 拆地雷 || 擋炸彈 || 逃命 || 接近目標 || 讓路 || 進行營;
+  return { 賭三角雷, 測炸彈, 拆地雷, 擋炸彈, 逃命, 接近目標, 讓路, 進行營, 有理由 };
 }
 
 export function scoreMove(game, seat, memory, { from, to }) {
@@ -456,12 +466,14 @@ export function scoreMove(game, seat, memory, { from, to }) {
 
     const enemyHQsUnexcluded = enemyHQs(game, seat)
       .filter(id => !memory.notFlag?.has(id));
-    const { 賭三角雷, 測炸彈, 拆地雷, 擋炸彈, 有理由 } = engineerReasons(game, seat, memory, from, to);
-    // 鐵律（Lynch）：沒有理由就不准動工兵——不只是「不准暴露身分」。
-    // 量出來原本有 42.3% 的工兵移動是沒有目的的，因為那時只是扣分不是禁止，
-    // 沒有更好的棋時它照走。Lynch：「我希望沒意義的走工兵要降低到零。」
-    // 全盤沒有別的棋可走時，chooseMove 會在一堆 -Infinity 裡挑，不會卡死。
-    if (!有理由) return -Infinity;
+    const { 賭三角雷, 測炸彈, 拆地雷, 擋炸彈, 進行營, 有理由 } = engineerReasons(game, seat, memory, from, to);
+    // 鐵律（Lynch）：沒有理由就不准「亂走」——但「亂走」的定義要精準：
+    //   亂走 ＝ 飛到別人家、或走出普通棋子做不到的路線（那才是自報身分）。
+    //   在自家走一格、或走進行營躲好，都**不算**亂動——那是正常棋子的走法。
+    // 一開始我把整條寫成「沒理由就完全不准動」，那會讓工兵變成路障（Lynch 指正）。
+    const 走法像普通棋子 = legalMoves(game, from, { asPiece: '排長' }).includes(to);
+    const 待在自家 = to.startsWith(`P${seat}-`);
+    if (!有理由 && !(走法像普通棋子 && 待在自家)) return -Infinity;
 
     if (拆地雷) score += w.engProbe * Math.max(0.5, minePrior(to)) + 14;
     // 工兵停在敵方軍旗旁不只是為了拆雷，更是威嚇（Lynch）：
@@ -472,6 +484,7 @@ export function scoreMove(game, seat, memory, { from, to }) {
     // 代價是這局再也拆不了地雷。越少越不划算。
     if (測炸彈) score += 10 * (20 / engineerValue(game, seat));
     if (擋炸彈) score += 8;
+    if (進行營) score += w.engCamp;      // 工兵躲進行營：保住全隊唯一能拆雷的棋子
 
     // 工兵絕不去吃「動過的棋子」——那不可能是地雷，純送死
     const couldBeMine = !memory.moved?.has(to) && !memory.notMine?.has(to);

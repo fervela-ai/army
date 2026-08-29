@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=79';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=79';
-import { insignia } from './insignia.js?v=79';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=93';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=93';
+import { insignia } from './insignia.js?v=93';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -131,12 +131,24 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   setBottomSeat(0);
 
   // 依「該玩家看得到的盤面」重畫棋子與提示
-  function render({ board, mySeats = [], selected = null, moves = [], revealedFlags = [], lastMove = null, hide = [], viewerSeat = 0 }) {
-    // 窄螢幕只留符號、不畫文字：手機一格約 19.8px，中文只有 6.5px，是雜訊不是資訊。
-    // 斷點用「單格的實際像素」而不是視窗寬度——棋盤尺寸、平板橫拿、瀏覽器縮放
-    // 都會讓視窗寬度失準，格子大小永遠正確。（規格 docs/piece-symbols-spec.md）
+  // 窄螢幕只留符號、不畫文字：手機一格約 19.8px，中文只有 6.5px，是雜訊不是資訊。
+  // 斷點用「單格的實際像素」而不是視窗寬度——棋盤尺寸、平板橫拿、瀏覽器縮放
+  // 都會讓視窗寬度失準，格子大小永遠正確。（規格 docs/piece-symbols-spec.md）
+  function syncCompact() {
     const cellPx = (svg.getBoundingClientRect().width || 0) / W * 42;
     svg.classList.toggle('is-compact', cellPx > 0 && cellPx < 26);
+  }
+  // 只在重畫時算不夠：手機轉橫、拉動視窗時格子大小就變了，
+  // 但下一步棋之前不會重畫，文字的顯示狀態會卡在舊的。
+  // 兩種都掛，不要二選一：實測 ResizeObserver 在某些情況下不會觸發（視窗縮放模擬），
+  // 只靠它就會卡在錯的狀態——57.9px 的大格子還在隱藏文字。
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncCompact).observe(svg);
+  window.addEventListener('resize', syncCompact);
+  window.addEventListener('orientationchange', () => setTimeout(syncCompact, 200));
+  requestAnimationFrame(syncCompact);      // 首次版面完成後再量一次
+
+  function render({ board, mySeats = [], selected = null, moves = [], revealedFlags = [], lastMove = null, hide = [], viewerSeat = 0 }) {
+    syncCompact();
     layers.pieces.replaceChildren();
     layers.hints.replaceChildren();
     layers.marks.replaceChildren();

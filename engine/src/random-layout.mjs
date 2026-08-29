@@ -19,12 +19,23 @@ export function randomLayout(seat, rnd = Math.random) {
   const layout = {};
   const take = (pool) => { const id = pick(pool, rnd); free.splice(free.indexOf(id), 1); return id; };
 
-  layout[take(free.filter(id => kindOf(id) === 'hq'))] = '軍旗';                 // 軍旗只能在大本營
-  for (let i = 0; i < PIECES.地雷.count; i++) layout[take(free.filter(id => rowOf(id) >= 5))] = '地雷';
+  // 大本營：軍旗放一個，另一個只能放地雷或排長（Lynch）。
+  // 走進大本營的棋子就再也不能動，所以擺大子等於當場報廢一顆——真人不會這樣下。
+  // 亂數佈陣原本會把司令、軍長塞進去，那不是「多樣」，是不合理。
+  const hqs = free.filter(id => kindOf(id) === 'hq');
+  layout[take(hqs)] = '軍旗';                                                   // 軍旗只能在大本營
+  const spareHQ = free.find(id => kindOf(id) === 'hq');
+  const spare = rnd() < 0.5 ? '地雷' : '排長';
+  if (spareHQ) layout[take([spareHQ])] = spare;                                 // 另一個大本營
+  // 已經放進大本營的那一顆要從後面的配額扣掉，否則總數會多一顆（實測 400/400 不合法）
+  const mines = PIECES.地雷.count - (spare === '地雷' ? 1 : 0);
+  for (let i = 0; i < mines; i++) layout[take(free.filter(id => rowOf(id) >= 5))] = '地雷';
   for (let i = 0; i < PIECES.炸彈.count; i++) layout[take(free.filter(id => rowOf(id) !== 1))] = '炸彈';
   const rest = [];
-  for (const [name, def] of Object.entries(PIECES))
-    if (!['軍旗', '地雷', '炸彈'].includes(name)) rest.push(...Array(def.count).fill(name));
+  for (const [name, def] of Object.entries(PIECES)) {
+    if (['軍旗', '地雷', '炸彈'].includes(name)) continue;
+    rest.push(...Array(def.count - (spare === name ? 1 : 0)).fill(name));
+  }
   while (rest.length) layout[take([...free])] = pick(rest, rnd);
   return layout;
 }

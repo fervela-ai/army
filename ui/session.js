@@ -6,16 +6,16 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=79';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=79';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=93';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=93';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=79';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=79';
-import { VALUE } from '../engine/ai/lookahead.mjs?v=79';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=79';
-import { searchMove } from '../engine/ai/search.mjs?v=79';
+} from '../engine/src/room.mjs?v=93';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=93';
+import { VALUE } from '../engine/ai/lookahead.mjs?v=93';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=93';
+import { searchMove } from '../engine/ai/search.mjs?v=93';
 
 // controllers：四個座位分別由誰控制。'ai' 或玩家代號（'A'、'B'）。
 // 所有模式都只是這張表的不同填法——引擎那層本來就是用「座位→玩家」在跑的：
@@ -107,12 +107,13 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
       const known = reveal || seat === viewer;
       const piece = known ? room.game.at.get(from)?.piece ?? null : null;
       const truePiece = room.game.at.get(from)?.piece ?? null;   // 進棋譜用，不給畫面
+      const victim = room.game.at.get(to)?.piece ?? null;        // 被吃掉的是什麼，統計要用
       const path = movePath(room.game, from, to);
       const before = stateForPlayer(room, pidOf(viewer)).board;
       const events = play(room, pidOf(seat), from, to);
       for (const s of SEATS) observe(memories[s], events);       // AI 只吸收公開事件
       const mv = events.find(e => e.type === 'move');
-      record.push({ seat, from, to, piece: truePiece, outcome: mv.outcome, ply: room.game.plies });
+      record.push({ seat, from, to, piece: truePiece, victim, outcome: mv.outcome, ply: room.game.plies });
       return { events, move: { ...mv, path, piece }, before };
     },
 
@@ -153,6 +154,41 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
       room.game.result = { type: 'win', team: TEAM_OF(seat) === 0 ? 1 : 0, reason: 'resign' };
       room.status = 'ended';
       return room.game.result;
+    },
+
+    // 對戰統計。只有連線層算得出來——它才知道每顆棋子的真實身分。
+    // Lynch 要的三項：殘子（1/2/3）、出兵勝率、炸彈換到 1/2 的獎勵。
+    // 這也是之後要做積分／獎勵系統的地基。
+    stats: async (seat) => {
+      const team = TEAM_OF(seat);
+      const alive = { mine: { 司令: 0, 軍長: 0, 師長: 0 }, foe: { 司令: 0, 軍長: 0, 師長: 0 } };
+      if (room.game) {
+        for (const [, o] of room.game.at) {
+          const side = TEAM_OF(o.seat) === team ? 'mine' : 'foe';
+          if (o.piece in alive[side]) alive[side][o.piece]++;
+        }
+      }
+      // 出兵勝率：我方主動發起的攻擊裡，吃掉對方的比例
+      let attacks = 0, won = 0, traded = 0, lost = 0, bombBonus = 0;
+      const bombKills = [];
+      for (const m of record) {
+        if (TEAM_OF(m.seat) !== team) continue;
+        if (m.outcome === 'moved') continue;          // 沒碰到人，不算出兵
+        attacks++;
+        if (m.outcome === 'defenderDead') won++;
+        else if (m.outcome === 'bothDead') traded++;
+        else lost++;
+        // 炸彈換到司令或軍長＝最高價值的一擊
+        if (m.piece === '炸彈' && m.outcome === 'bothDead' && m.victim) {
+          if (m.victim === '司令' || m.victim === '軍長') { bombBonus++; bombKills.push(m.victim); }
+        }
+      }
+      return {
+        alive, attacks, won, traded, lost,
+        winRate: attacks ? won / attacks : null,
+        bombBonus, bombKills,
+        plies: room.game?.plies ?? 0,
+      };
     },
 
     record: async () => ({ layouts: room.layouts, moves: record }),

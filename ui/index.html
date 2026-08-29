@@ -3,13 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>四國軍棋（本機測試版）</title>
-<link rel="stylesheet" href="theme.css?v=48">
+<title>四國軍棋（試玩版）</title>
+<link rel="stylesheet" href="theme.css?v=53">
 </head>
 <body>
 <div class="app">
   <header class="topbar">
     <h1 class="title">四國軍棋</h1>
+    <!-- 對局代號要留在畫面上：討論棋局時大家是丟截圖的，代號不在圖裡就對不上是哪一局 -->
+    <div class="gamecode" id="gameCode" title="這一局的代號，回報問題時附上它">—</div>
     <div class="turn" id="turn">準備中</div>
     <div class="controls">
       <label class="toggle"><input type="checkbox" id="soloMode" checked> 單人（三家電腦）</label>
@@ -64,6 +66,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=48"></script>
+<script type="module" src="app.js?v=53"></script>
 </body>
 </html>

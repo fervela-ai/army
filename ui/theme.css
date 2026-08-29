@@ -206,3 +206,26 @@ body {
 
 /* 轉角圓弧：畫粗一點，讓它明顯是「可以順著滑過去的鐵路圓角」 */
 .rail--arc { stroke-width: calc(var(--rail-width) + 1px); stroke-linecap: round; }
+
+/* 對局代號：要在截圖裡看得清楚，但不能搶走棋盤的注意力。
+   用等寬字，字母和數字才不會因為字寬不同而看錯。 */
+.gamecode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  color: var(--ink);            /* 截圖縮小後還要看得清楚，不能用淡色 */
+  background: var(--surface);
+  white-space: nowrap;
+  cursor: pointer;               /* 按一下就複製 */
+  transition: background .15s, color .15s, border-color .15s;
+}
+.gamecode:hover { border-color: var(--ink-dim); }
+.gamecode.is-copied {
+  background: var(--ok, #1a7f5a);
+  border-color: transparent;
+  color: #fff;
+}

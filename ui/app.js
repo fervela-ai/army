@@ -1,12 +1,12 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=48';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=48';
-import { localSession } from './session.js?v=48';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=48';
-import { createBoardView } from './board.js?v=48';
-import { SFX, setEnabled } from './sound.js?v=48';
+import { SEATS } from '../engine/src/board.mjs?v=53';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=53';
+import { localSession } from './session.js?v=53';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=53';
+import { createBoardView } from './board.js?v=53';
+import { SFX, setEnabled } from './sound.js?v=53';
 
 const NAMES = ['你', '右家', '對家', '左家'];
 const SAVE_KEY = 'army-online:layouts:v2';
@@ -16,7 +16,7 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'soloMode', 'soundOn',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode']
   .map(id => [id, document.getElementById(id)]));
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
@@ -82,6 +82,7 @@ async function sync() {
 async function newGame() {
   clearInterval(ticker);
   gameCode = newGameCode();
+  els.gameCode.textContent = gameCode;      // 留在畫面上，截圖才帶得走
   // 電腦用心法佈陣（三角雷護旗、大子後接工兵再接炸彈）。
   // 同一個 AI 換成心法佈陣後，對上亂數佈陣的勝率是 96.5%——佈陣的影響非常大。
   session = localSession({ solo: solo(), useSearch: () => els.useSearch.checked, names: NAMES });
@@ -376,7 +377,7 @@ function showResult() {
   els.overlay.hidden = false;
   (draw ? SFX.flag : (win ? SFX.victory : SFX.defeat))();
 }
-els.overlayAgain.addEventListener('click', () => { els.overlay.hidden = true; askNickname().then(newGame); });
+els.overlayAgain.addEventListener('click', () => { els.overlay.hidden = true; newGame(); });
 
 // 把整局棋譜存起來（含開局佈陣與每一步），最多留 10 局。
 // 這是之後分析「人類怎麼下」的原料——沒有棋譜就只能憑印象猜。
@@ -540,9 +541,40 @@ els.btnLoad.addEventListener('click', () => {
   showModal({ title: '讀取陣型', body: list, actions: [{ label: '關閉', onClick: closeModal }] });
 });
 
+// 代號按一下就複製。討論棋局時要嘛丟截圖、要嘛貼代號，兩條路都要順手。
+els.gameCode.addEventListener('click', async () => {
+  const done = () => {
+    const keep = els.gameCode.textContent;
+    els.gameCode.textContent = '已複製';
+    els.gameCode.classList.add('is-copied');
+    setTimeout(() => {
+      els.gameCode.textContent = keep;
+      els.gameCode.classList.remove('is-copied');
+    }, 900);
+  };
+  try {
+    await navigator.clipboard.writeText(gameCode);
+    done();
+  } catch {
+    // 沒有剪貼簿權限（或不是安全連線）時的退路：用選取＋execCommand
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = gameCode;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.append(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      done();
+    } catch { hint('複製失敗，請手動選取代號', true); }
+  }
+});
+
 els.btnConfirm.addEventListener('click', confirmSetup);
 els.revealAll.addEventListener('change', sync);
 els.soundOn.addEventListener('change', () => setEnabled(els.soundOn.checked));
 els.soloMode.addEventListener('change', newGame);
 els.restart.addEventListener('click', newGame);
-newGame();
+// 進站先問代稱，問完才開局（第一次才會問，之後記住）
+askNickname().then(newGame);

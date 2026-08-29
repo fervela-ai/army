@@ -6,15 +6,15 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS } from '../engine/src/board.mjs?v=53';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=53';
+import { SEATS } from '../engine/src/board.mjs?v=54';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=54';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=53';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=53';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=53';
-import { searchMove } from '../engine/ai/search.mjs?v=53';
+} from '../engine/src/room.mjs?v=54';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=54';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=54';
+import { searchMove } from '../engine/ai/search.mjs?v=54';
 
 export function localSession({ solo = true, useSearch = () => false, names }) {
   const room = createRoom({ mode: 'four', code: 'LOCAL1' });

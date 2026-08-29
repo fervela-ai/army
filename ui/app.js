@@ -1,12 +1,12 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=53';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=53';
-import { localSession } from './session.js?v=53';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=53';
-import { createBoardView } from './board.js?v=53';
-import { SFX, setEnabled } from './sound.js?v=53';
+import { SEATS } from '../engine/src/board.mjs?v=54';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=54';
+import { localSession } from './session.js?v=54';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=54';
+import { createBoardView } from './board.js?v=54';
+import { SFX, setEnabled } from './sound.js?v=54';
 
 const NAMES = ['你', '右家', '對家', '左家'];
 const SAVE_KEY = 'army-online:layouts:v2';

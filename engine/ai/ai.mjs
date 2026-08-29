@@ -50,7 +50,8 @@ const DEFAULT_W = {
   engIdleLate: 6,       // 殘局解禁
   engReveal: 12,        // 走出普通棋子做不到的彎＝自報身分
   engProbe: 6,
-  engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
+  engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）
+  engDigRevealed: 45,   // 軍旗已顯露時，拆旗前那顆——那是通往勝利的唯一障礙          // 去測疑似地雷（會再乘上地雷機率）
   bombBig: 22,          // 炸彈換軍長以上
   bombMid: 20,          // 炸彈換師長級
   bombIdle: 12,
@@ -480,6 +481,13 @@ export function scoreMove(game, seat, memory, { from, to }) {
     if (!有理由 && !(走法像普通棋子 && 待在自家)) return -Infinity;
 
     if (拆地雷) score += w.engProbe * Math.max(0.5, minePrior(to)) + 14;
+
+    // Lynch：「對方軍旗早就現身了，軍旗前的地雷測試要權重拉很高。」
+    // 軍旗一旦顯露，位置就是確定的，擋在它前面的東西也就從「可能有價值」變成
+    // 「唯一的障礙」——這時候拆雷不再是探路，是直接通往勝利的一步。
+    for (const flag of revealedFlagNodes(game, s2 => TEAM_OF(s2) !== TEAM_OF(seat))) {
+      if (dist(to, flag.id) <= 1.5 && !memory.moved?.has(to)) score += w.engDigRevealed;
+    }
     // 工兵停在敵方軍旗旁不只是為了拆雷，更是威嚇（Lynch）：
     // 對方動後兩排來擋＝告訴我那顆不是地雷；不能吃我＝我直接賭贏；
     // 飛自己的工兵來解＝等於承認這裡是軍旗。怎麼回應都洩漏資訊。

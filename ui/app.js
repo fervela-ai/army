@@ -1,39 +1,49 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=54';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=54';
-import { localSession } from './session.js?v=54';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=54';
-import { createBoardView } from './board.js?v=54';
-import { SFX, setEnabled } from './sound.js?v=54';
+import { SEATS } from '../engine/src/board.mjs?v=63';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=63';
+import { localSession } from './session.js?v=63';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=63';
+import { createBoardView } from './board.js?v=63';
+import { SFX, setEnabled } from './sound.js?v=63';
 
-const NAMES = ['你', '右家', '對家', '左家'];
+// 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
+// 名字錯了，玩家會看不懂戰報在講誰。
+const nameOf = (s) => NAMES_OF()[s] ?? ['你', '右家', '對家', '左家'][s];
 const SAVE_KEY = 'army-online:layouts:v2';
 const GAMES_KEY = 'army-online:games';
 const PLAYER_KEY = 'army-online:player';      // 玩家代稱，問過一次就記住
 const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中斷也不會遺失        // 保留最近幾局的完整棋譜，供事後分析   // { 名稱: { seat, layout, savedAt } }
-const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'soloMode', 'soundOn',
-  'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm',
+const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
+  'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign']
   .map(id => [id, document.getElementById(id)]));
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
 // 不再自己抱著整個房間——AI 之後要搬到伺服器，這裡就只換成 remoteSession。
 let session = null, selected = null, moves = [], logLines = [], setupSeat = 0, ticker = null;
 let myLayout = {}, busy = false, viewSeatOverride = null, lastMove = null;
+let drawAskedAt = -1;                 // 上次問過「要不要和局」是第幾手，避免一直跳視窗
 // S = 最近一次的快照。refresh() 是同步的，所以畫面永遠畫 S，由 sync() 負責更新它。
-let S = { status: 'setup', turn: null, plies: 0, setupDeadline: 0, ready: new Set(),
+let S = { status: 'setup', turn: null, plies: 0, setupDeadline: 0, readySeats: new Set(),
   board: null, displayBoard: null, result: null, eliminated: new Set(), revealedFlags: new Set() };
 
-// 每一局一個代號。朋友回報「我第三局那個 bug」時，才對得上是哪一局棋譜。
-// 用不會看錯的字母（拿掉 0/O/1/I），代號才唸得出來、抄得對。
+// 每一局一個代號，格式 YYMMDD-XXX（例如 260829-A7K）。
+// 日期用玩家本地時間，這樣在棋譜清單裡一眼就知道是哪一天下的——
+// 純亂碼（舊版的 AHX-S6H）看不出時間，要對照時間戳才知道。
+// 後三碼用不會看錯的字母（拿掉 0/O/1/I），代號才唸得出來、抄得對。
+// 注意：伺服器端另有流水號（2608290001），那由 Worker 列清單時當場算，
+// 前端不知道今天已經有幾局，算不出來，也不該猜。
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function newGameCode() {
-  let out = '';
-  for (let i = 0; i < 6; i++) out += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  return `${out.slice(0, 3)}-${out.slice(3)}`;
+  const d = new Date();
+  const two = (n) => String(n).padStart(2, '0');
+  const day = `${two(d.getFullYear() % 100)}${two(d.getMonth() + 1)}${two(d.getDate())}`;
+  let tail = '';
+  for (let i = 0; i < 3; i++) tail += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return `${day}-${tail}`;
 }
 let gameCode = newGameCode();
 
@@ -69,8 +79,24 @@ function askNickname() {
   });
 }
 
-const solo = () => els.soloMode.checked;
+// 四種模式其實是同一張「座位歸屬表」的不同填法。
+// 兩個真人的模式先用熱座（同一台電腦輪流），介面驗順了再接連線。
+const MODES = {
+  solo:     { controllers: ['A', 'ai', 'ai', 'ai'], names: ['你', '右家（電腦）', '對家（電腦）', '左家（電腦）'] },
+  coop:     { controllers: ['A', 'ai', 'B', 'ai'],  names: ['你', '右家（電腦）', '夥伴', '左家（電腦）'] },
+  duelAI:   { controllers: ['A', 'B', 'ai', 'ai'],  names: ['你', '對手', '你的電腦隊友', '對手的電腦隊友'] },
+  duelTeam: { controllers: ['A', 'B', 'A', 'B'],    names: ['你', '對手', '你（對家）', '對手（對家）'] },
+};
+const mode = () => MODES[els.mode.value] ?? MODES.solo;
+const controllers = () => mode().controllers;
+const solo = () => els.mode.value === 'solo';
+const humansInGame = () => [...new Set(controllers().filter(c => c !== 'ai'))];
+// 熱座：現在坐在電腦前面的是誰（'A' 或 'B'）
+let activeHuman = 'A';
+const mySetupSeats = () => SEATS.filter(s => controllers()[s] === activeHuman);
+const ownerOfSeat = (s) => controllers()[s];
 const isAI = (seat) => session?.isAI(seat) ?? false;
+const NAMES_OF = () => mode().names;
 
 async function sync() {
   S = await session.snapshot(viewSeat());
@@ -85,13 +111,20 @@ async function newGame() {
   els.gameCode.textContent = gameCode;      // 留在畫面上，截圖才帶得走
   // 電腦用心法佈陣（三角雷護旗、大子後接工兵再接炸彈）。
   // 同一個 AI 換成心法佈陣後，對上亂數佈陣的勝率是 96.5%——佈陣的影響非常大。
-  session = localSession({ solo: solo(), useSearch: () => els.useSearch.checked, names: NAMES });
-  setupSeat = 0;
+  session = localSession({ controllers: controllers(), useSearch: () => els.useSearch.checked, names: NAMES_OF() });
+  activeHuman = 'A';
+  setupSeat = mySetupSeats()[0] ?? 0;
   myLayout = await session.layout(0);
   selected = null; moves = []; logLines = []; busy = false; viewSeatOverride = null;
-  resultShown = false; lastMove = null; els.overlay.hidden = true;
+  resultShown = false; lastMove = null; drawAskedAt = -1; els.overlay.hidden = true;
 
-  if (solo()) addLog('單人練習：你對三家電腦', true);
+  hint('');
+  addLog({
+    solo: '單人練習：你對三家電腦',
+    coop: '雙人合作：你和夥伴同一隊，對抗兩家電腦',
+    duelAI: '雙人敵對：你和對手各帶一個電腦隊友',
+    duelTeam: '雙人敵對：兩邊各控一整隊',
+  }[els.mode.value] ?? '', true);
   addLog('佈陣開始，兩分鐘倒數');
   startTicker();
   await sync();
@@ -121,8 +154,16 @@ function renderTimer() {
 }
 
 const currentSeat = () => S.turn;
-const viewSeat = () => viewSeatOverride ?? (S.status === 'setup' ? setupSeat
-  : (solo() ? 0 : (S.turn ?? 0)));
+// 看誰的視角：佈陣時看正在排的那家；對局時看「輪到的那家」，
+// 但如果輪到電腦，就停在現在坐在電腦前面那個人的座位上——
+// 不然電腦走棋時畫面會跳到別人家，玩家會瞬間失去方向。
+const viewSeat = () => {
+  if (viewSeatOverride != null) return viewSeatOverride;
+  if (S.status === 'setup') return setupSeat;
+  const t = S.turn;
+  if (t != null && !isAI(t) && ownerOfSeat(t) === activeHuman) return t;
+  return mySetupSeats()[0] ?? t ?? 0;
+};
 
 function addLog(text, big = false) {
   logLines.unshift({ text, big });
@@ -170,11 +211,34 @@ async function confirmSetup() {
     return;
   }
   S = await session.snapshot(viewSeat());
-  const next = SEATS.find(s => !S.ready.has(`p${s}`));
-  setupSeat = next ?? setupSeat;
-  myLayout = await session.layout(setupSeat);
-  hint(`換 ${NAMES[setupSeat]} 佈陣`);
-  await sync();
+  // 先把自己還沒排完的座位排完（一人控兩家時會有兩個）
+  const mine = mySetupSeats().find(x => !S.readySeats.has(x));
+  if (mine != null) {
+    setupSeat = mine;
+    myLayout = await session.layout(setupSeat);
+    hint(`換你的另一家（${nameOf(setupSeat)}）佈陣`);
+    await sync();
+    return;
+  }
+  // 自己排完了，換另一個人。要先擋一下畫面，否則他一按確定就看到你的陣。
+  const other = SEATS.find(x => !S.readySeats.has(x) && !isAI(x));
+  if (other == null) { await sync(); return; }
+  const note = document.createElement('div');
+  note.className = 'modal-note';
+  note.textContent = `請把電腦交給 ${nameOf(other)}。按下「我準備好了」之前，先不要看螢幕。`;
+  showModal({
+    title: '換人佈陣',
+    body: note,
+    actions: [{ label: '我準備好了', primary: true, onClick: async () => {
+      closeModal();
+      activeHuman = ownerOfSeat(other);
+      setupSeat = other;
+      selected = null;
+      myLayout = await session.layout(setupSeat);
+      hint(`${nameOf(setupSeat)} 佈陣中`);
+      await sync();
+    } }],
+  });
 }
 
 // ---- 對戰 ----
@@ -212,16 +276,47 @@ async function doMove(seat, from, to) {
     }));
   } catch { /* 存不下不影響遊戲 */ }
   for (const e of events) {
-    if (e.type === 'move') addLog(`${NAMES[e.seat]}：${OUTCOME_TEXT[e.outcome]}`);
-    if (e.type === 'flagRevealed') { addLog(`${NAMES[e.seat]} 司令陣亡，軍旗顯露`, true); SFX.alarm(); }
-    if (e.type === 'eliminated') { addLog(`${NAMES[e.seat]} 被扛旗，全軍覆沒`, true); SFX.flag(); }
+    if (e.type === 'move') addLog(`${nameOf(e.seat)}：${OUTCOME_TEXT[e.outcome]}`);
+    if (e.type === 'flagRevealed') { addLog(`${nameOf(e.seat)} 司令陣亡，軍旗顯露`, true); SFX.alarm(); }
+    if (e.type === 'eliminated') { addLog(`${nameOf(e.seat)} 被扛旗，全軍覆沒`, true); SFX.flag(); }
     if (e.type === 'end') addLog(e.team != null ? `隊${e.team === 0 ? 'A' : 'B'} 獲勝` : '和局', true);
   }
   await sync();
+  maybeAskDraw();
+}
+
+// 60 手無吃子才判和，對人來說太久了（Lynch）。
+// 門檻用「還在場的家數 × 8 回合」：出局一家之後，同樣的手數代表更多輪。
+function maybeAskDraw() {
+  if (S.status !== 'playing' || els.modal.hidden === false) return;
+  // ?drawAsk=N 可以把門檻調低，方便驗證這個視窗真的會跳（正式玩不會帶這個參數）
+  const override = Number(new URLSearchParams(location.search).get('drawAsk'));
+  const threshold = Number.isFinite(override) && override > 0 ? override : (S.liveSeats ?? 4) * 8;
+  if (S.pliesSinceCapture < threshold) return;
+  if (drawAskedAt >= 0 && S.pliesSinceCapture - drawAskedAt < threshold) return;   // 問過就隔一輪再問
+  drawAskedAt = S.pliesSinceCapture;
+  const note = document.createElement('div');
+  note.className = 'modal-note';
+  note.textContent = `已經 ${S.pliesSinceCapture} 手沒有人吃子（場上還有 ${S.liveSeats} 家）。`
+    + '要向其他家提和嗎？對方明顯占上風的話不會答應。';
+  showModal({
+    title: '要提和嗎？',
+    body: note,
+    actions: [
+      { label: '繼續下', onClick: closeModal },
+      { label: '提和', primary: true, onClick: async () => {
+        closeModal();
+        const { accepted } = await session.offerDraw(0);
+        addLog(accepted ? '對方同意和局' : '對方不同意和局，繼續下', true);
+        if (!accepted) SFX.reject();
+        await sync();
+      } },
+    ],
+  });
 }
 
 async function runAIs() {
-  while (S.status === 'playing' && isAI(currentSeat())) {
+  while (S.status === 'playing' && currentSeat() != null && isAI(currentSeat())) {
     busy = true; refresh();
     await new Promise(r => setTimeout(r, 420));             // 讓人看得清楚電腦在下哪一步
     const seat = currentSeat();
@@ -233,7 +328,7 @@ async function runAIs() {
   refresh();
 }
 
-const afterStart = () => { if (solo()) runAIs(); };
+const afterStart = () => { runAIs(); };
 
 function clearSelection() {
   if (!selected && !moves.length) return;
@@ -245,14 +340,20 @@ async function onPlayClick(id) {
   if (S.status !== 'playing' || busy) return;
   const seat = currentSeat();
   if (isAI(seat)) return;
+  // 熱座：輪到另一個人時，要先按「換手」才能動棋，避免替別人下錯
+  if (ownerOfSeat(seat) !== activeHuman) { hint(`輪到 ${nameOf(seat)}，請先按換手`); return; }
   const occ = S.board?.at[id];
 
   if (selected && moves.includes(id)) {
     busy = true;
     await doMove(seat, selected, id);
     busy = false;
-    if (solo()) await runAIs();
-    else { viewSeatOverride = seat; refresh(); }            // 熱座：先停在自己的視角，按換手才轉
+    await runAIs();                                          // 先讓電腦把它們的棋走完
+    // 換人了才停下來等交接。同一個人接著走（例如一人控兩家）就不用停。
+    if (S.status === 'playing' && !isAI(currentSeat()) && ownerOfSeat(currentSeat()) !== activeHuman) {
+      viewSeatOverride = seat;
+      refresh();
+    }
     return;
   }
   // 「這顆能走去哪」問連線層——前端沒有完整盤面，本來就算不出來
@@ -305,21 +406,23 @@ function refresh() {
   });
 
   if (inSetup) {
-    els.setupWho.textContent = `${NAMES[setupSeat]} 佈陣中`;
+    els.setupWho.textContent = `${nameOf(setupSeat)} 佈陣中`;
+    // 一人控兩家時，兩家都要排完再按一次確定——「準備好了」是記在玩家身上，不是座位。
+    els.btnOtherSeat.hidden = mySetupSeats().length < 2;
     renderTimer();
     els.turn.textContent = '佈陣階段';
   } else if (S.status === 'ended') {
     els.turn.textContent = S.result.type === 'win'
       ? `隊${S.result.team === 0 ? 'A' : 'B'} 獲勝` : '和局';
   } else if (viewSeatOverride != null) {
-    els.turn.textContent = `你走完了，換 ${NAMES[currentSeat()]}`;
+    els.turn.textContent = `你走完了，換 ${nameOf(currentSeat())}`;
   } else {
-    els.turn.textContent = busy ? `${NAMES[currentSeat()]} 思考中…` : `輪到 ${NAMES[currentSeat()]}`;
+    els.turn.textContent = busy ? `${nameOf(currentSeat())} 思考中…` : `輪到 ${nameOf(currentSeat())}`;
   }
 
   els.seats.replaceChildren(...SEATS.map(s => {
     const li = document.createElement('li');
-    const ready = S.ready.has(`p${s}`);
+    const ready = S.readySeats.has(s);
     li.className = ['seat', S.turn != null && s === currentSeat() ? 'is-turn' : '',
       ready && inSetup ? 'is-ready' : '',
       S.eliminated.has(s) ? 'is-out' : ''].filter(Boolean).join(' ');
@@ -327,7 +430,7 @@ function refresh() {
     dot.className = 'seat-dot';
     dot.style.background = `var(--seat-${s})`;
     const name = document.createElement('span');
-    name.textContent = NAMES[s] + (isAI(s) ? '（電腦）' : '');
+    name.textContent = nameOf(s);
     const note = document.createElement('span');
     note.className = 'seat-note';
     note.textContent = inSetup ? (ready ? '已完成' : '')
@@ -345,16 +448,26 @@ function refresh() {
 
   showResult();
 
-  // 熱座模式：走完先停在自己視角，按了才換手
+  // 熱座模式：走完先停在自己視角，按了才換手。
+  // 只要「輪到的那家不屬於現在坐在電腦前的人」就一定要出現換手鈕——
+  // 少了這個條件，佈陣交接之後開局第一手會卡死：棋動不了、按鈕也不出現。
+  const needHandoff = S.status === 'playing' && S.turn != null
+    && !isAI(S.turn) && ownerOfSeat(S.turn) !== activeHuman;
   let handoff = document.getElementById('handoff');
-  if (viewSeatOverride != null && !handoff) {
+  if ((viewSeatOverride != null || needHandoff) && !handoff) {
     handoff = document.createElement('button');
     handoff.id = 'handoff';
     handoff.className = 'btn btn--primary handoff';
-    handoff.textContent = `換 ${NAMES[currentSeat()]} 接手`;
-    handoff.addEventListener('click', () => { viewSeatOverride = null; handoff.remove(); refresh(); });
+    handoff.textContent = `換 ${nameOf(currentSeat())} 接手`;
+    handoff.addEventListener('click', () => {
+      const next = currentSeat();
+      if (next != null && !isAI(next)) activeHuman = ownerOfSeat(next);   // 換人坐上來
+      viewSeatOverride = null;
+      handoff.remove();
+      sync();
+    });
     document.querySelector('.stage').appendChild(handoff);
-  } else if (viewSeatOverride == null && handoff) handoff.remove();
+  } else if (viewSeatOverride == null && !needHandoff && handoff) handoff.remove();
 }
 
 // 結局畫面：贏了要有贏的樣子，不能只在標題列寫一行小字。
@@ -373,7 +486,9 @@ function showResult() {
   els.overlayTitle.className = `overlay-title ${draw ? '' : (win ? 'is-win' : 'is-lose')}`;
   els.overlaySub.textContent = draw
     ? (r.reason === 'noCapture' ? '連續 60 步沒有吃子，判和' : '四家都無步可走，判和')
-    : `${win ? '你和對家' : '左右兩家'}拿下了對方兩面軍旗　共 ${S.plies} 步`;
+    : r.reason === 'resign'
+      ? `你認輸離開　共 ${S.plies} 步（棋譜已保留）`
+      : `${win ? '你和對家' : '左右兩家'}拿下了對方兩面軍旗　共 ${S.plies} 步`;
   els.overlay.hidden = false;
   (draw ? SFX.flag : (win ? SFX.victory : SFX.defeat))();
 }
@@ -571,10 +686,56 @@ els.gameCode.addEventListener('click', async () => {
   }
 });
 
+els.btnOtherSeat.addEventListener('click', async () => {
+  const other = mySetupSeats().find(x => x !== setupSeat);
+  if (other == null) return;
+  setupSeat = other;
+  selected = null;
+  myLayout = await session.layout(setupSeat);
+  hint(`現在排的是 ${nameOf(setupSeat)}。兩家都排好再按確定佈陣。`);
+  await sync();
+});
+
 els.btnConfirm.addEventListener('click', confirmSetup);
 els.revealAll.addEventListener('change', sync);
 els.soundOn.addEventListener('change', () => setEnabled(els.soundOn.checked));
-els.soloMode.addEventListener('change', newGame);
-els.restart.addEventListener('click', newGame);
+els.mode.addEventListener('change', newGame);
+// 認輸離開：走進死棋時要有出口。順帶把這一局的棋譜結算掉——
+// 沒有這個按鈕的話，玩家只能按「重新開局」，那會讓這局被下一局蓋掉。
+els.resign.addEventListener('click', () => {
+  if (S.status !== 'playing') { hint('這一局還沒開始或已經結束了'); return; }
+  showModal({
+    title: '認輸離開這一局？',
+    body: (() => {
+      const d = document.createElement('div');
+      d.className = 'modal-note';
+      d.textContent = '這一局會判你落敗並結算。棋譜會完整保留下來——'
+        + '「玩不下去的那一局」對改進電腦棋力特別有用。';
+      return d;
+    })(),
+    actions: [
+      { label: '再想想', onClick: closeModal },
+      { label: '認輸', primary: true, onClick: async () => {
+        closeModal();
+        await session.resign(0);
+        addLog('你認輸離開，這一局結束', true);
+        await sync();          // sync 會走到 showResult()，棋譜在那裡結算並回傳
+      } },
+    ],
+  });
+});
+
+// 重新開局前，先把還沒下完的這一局結算掉，否則它會被下一局蓋掉。
+els.restart.addEventListener('click', async () => {
+  if (S.status === 'playing') {
+    try {
+      const rec = await session.record();
+      uploadRecord({ at: Date.now(), code: gameCode, player: playerName(), aiVersion: AI_VERSION,
+        mode: solo() ? 'solo' : 'hotseat', ai: els.useSearch.checked ? 'search' : 'heuristic',
+        result: null, unfinished: true, abandoned: true, ...rec, plies: S.plies });
+    } catch { /* 回傳失敗不該擋住重新開局 */ }
+  }
+  newGame();
+});
 // 進站先問代稱，問完才開局（第一次才會問，之後記住）
 askNickname().then(newGame);

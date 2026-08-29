@@ -25,6 +25,7 @@ export function createMemory(seat = null, weights = null, rnd = null) {
     notFlag: new Set(),       // 已證實不是軍旗的大本營格子
     myExposed: new Set(),     // 我方已曝光為「大子」的棋子（打贏過，全場都知道它不小）
     lastLostPly: new Map(),   // 我方在哪一格、第幾手折損過
+    lostCount: new Map(),     // 我方在哪一格總共折損過幾顆——記整場，不會過期（Lynch）
     notMine: new Set(),       // 確定不是地雷的格子：我方工兵死在那 → 工兵吃得掉地雷，所以那不是雷
     notBomb: new Set(),       // 確定不是炸彈的格子：炸彈碰到誰都同歸於盡，所以「打贏過」或「守住過」的都不是炸彈
     lastMovedPly: new Map(),  // 格子 → 最近一次移動的手數（剛靠過來的很可能是炸彈）
@@ -90,6 +91,8 @@ const DEFAULT_W = {
   defendKill: 25,       // 吃掉正在逼近軍旗的敵人
   hqRush: 40,           // 敵方大本營沒動過的那顆有一半機率是軍旗，值得衝
   frozenIntruder: 45,   // 別花手去吃「困在大本營裡」的敵子——它已經不能動了
+  deathSquare: 18,      // 那一格剛吞掉我方棋子，別急著再送一顆過去
+  // （不再用時間視窗：死亡格記整場）
   keyNode: 1,         // 佔住重要點位（九宮、行營）本身就有價值
   margin: 1.5,          // 挑步時容許的分數差
 };
@@ -204,7 +207,10 @@ export function observe(memory, events) {
     if (e.outcome === 'attackerDead') {
       memory.deadly.set(e.to, (memory.deadly.get(e.to) ?? 0) + 1);
       if (isBackRow(e.to) && !memory.moved.has(e.to)) memory.mineSuspect.add(e.to);
-      if (mine) memory.lastLostPly.set(e.to, memory.ply);
+      if (mine) {
+        memory.lastLostPly.set(e.to, memory.ply);
+        memory.lostCount.set(e.to, (memory.lostCount.get(e.to) ?? 0) + 1);
+      }
       if (mine && memory.pending?.to === e.to) {
         const r = PIECES[memory.pending.piece]?.rank ?? 0;
         memory.bigThreat.set(e.to, Math.max(memory.bigThreat.get(e.to) ?? 0, r));
@@ -325,6 +331,59 @@ const flagThreats = (game, seat, flagNodes) => {
   return out;
 };
 
+// 工兵這一步有沒有「理由」。抽出來是為了讓模擬器能直接量「無意義的工兵移動」——
+// Lynch：「亂走就是走沒有意義的棋。」量不到就修不了。
+// 這四條就是 Lynch 指定的工兵鐵律（外加雙飛由呼叫端判斷）。
+export function engineerReasons(game, seat, memory, from, to) {
+  const target = game.at.get(to);
+  const neighbours = (id) => [...(BOARD.adj.get(id) ?? [])];
+  const suspectMine = memory.mineSuspect?.has(to);
+  const deadly = memory.bigThreat?.get(to) ?? 0;
+  const mateSeat = [0, 1, 2, 3].find(x => x !== seat && TEAM_OF(x) === TEAM_OF(seat));
+  const enemyHQsUnexcluded = enemyHQs(game, seat).filter(id => !memory.notFlag?.has(id));
+
+  const 賭三角雷 = enemyHQsUnexcluded.some(hq => dist(to, hq) <= 1.5);
+  const movedAgo = (memory.ply ?? 0) - (memory.lastMovedPly?.get(to) ?? -99);
+  const 測炸彈 = !!target && movedAgo <= 3 && neighbours(to).some(n => {
+    const o = game.at.get(n);
+    return o && TEAM_OF(o.seat) === TEAM_OF(seat) && (PIECES[o.piece]?.rank ?? 0) >= 6;
+  });
+  const 拆地雷 = !!suspectMine || (deadly > 0 && !memory.notMine?.has(to));
+  const 擋炸彈 = mateSeat != null && neighbours(to).some(n => {
+    const o = game.at.get(n);
+    if (!o || o.seat !== mateSeat) return false;
+    return neighbours(n).some(m => {
+      const e = game.at.get(m);
+      return e && TEAM_OF(e.seat) !== TEAM_OF(seat);
+    });
+  });
+  // 逃命：現在站的地方會被吃，走開是正當理由。不給這條，工兵會呆在原地被白吃。
+  const threats = memory.threats;
+  const 逃命 = !!threats && (threats.get(from) ?? 0) > 0 && (threats.get(to) ?? 0) === 0;
+
+  // 朝目標靠近：一步到不了地雷或敵方大本營時，中途那步也算有目的。
+  // 少了這條，工兵永遠踏不出第一步——第一步的落點本身沒有任何理由。
+  const goals = [...(memory.mineSuspect ?? []), ...enemyHQsUnexcluded];
+  const near = (id) => (goals.length ? Math.min(...goals.map(g => dist(id, g))) : Infinity);
+  const 接近目標 = goals.length > 0 && near(to) < near(from);
+
+  // 讓路（Lynch）：工兵卡住自己人的出路時可以move開，但條件很嚴——
+  //   「可以移動，但不要被吃，不要走到危險地方，不要轉彎，走路要像一般棋子，
+  //     不要沒事吐露自己是工兵。」
+  // 所以：只有在旁邊真的有自己人被卡死時才算理由，而且落點要安全、
+  // 而且那一步必須是普通棋子也走得到的（轉彎＝自報身分）。
+  const 卡住同伴 = neighbours(from).some(n => {
+    const o = game.at.get(n);
+    return o && o.seat === seat && legalMoves(game, n).length === 0;
+  });
+  const 像普通棋子 = legalMoves(game, from, { asPiece: '排長' }).includes(to);
+  const 落點安全 = !threats || (threats.get(to) ?? 0) === 0;
+  const 讓路 = 卡住同伴 && 像普通棋子 && 落點安全;
+
+  const 有理由 = 賭三角雷 || 測炸彈 || 拆地雷 || 擋炸彈 || 逃命 || 接近目標 || 讓路;
+  return { 賭三角雷, 測炸彈, 拆地雷, 擋炸彈, 逃命, 接近目標, 讓路, 有理由 };
+}
+
 export function scoreMove(game, seat, memory, { from, to }) {
   const w = wOf(memory);
 
@@ -348,8 +407,18 @@ export function scoreMove(game, seat, memory, { from, to }) {
 
   const targetHQs = enemyHQs(game, seat);
   // 兩家都扛完就贏了，不會走到這裡；保險起見空陣列時不給推進分。
-  let score = targetHQs.length
+  const hqPullScore = targetHQs.length
     ? -Math.min(...targetHQs.map(hq => dist(to, hq))) * w.hqPull : 0;   // 往還活著的敵方大本營推進
+  let score = hqPullScore;
+
+  // 死亡格：那一格吃過我方的子。**記整場，不設時效**（Lynch）——
+  // 真人不會因為過了十手就忘記「那裡吃掉我兩顆工兵」。死越多次越要避
+  // （開根號成長，避免完全不敢碰關鍵點位）。
+  // 一定要放在這裡、不能放進「有子可吃」的分支：實戰 VWW-8WC 裡工兵是
+  // **走到空格**送死的，放在捕獲分支等於完全沒蓋到那個情境。
+  const lostHere = memory.lostCount?.get(to) ?? 0;
+  if (lostHere > 0)
+    score -= w.deathSquare * Math.sqrt(lostHere) * (piece === '工兵' ? 2.5 : 1);
 
   // ── 搶旗與守旗（軍旗顯露是公開資訊）──
   for (const flag of revealedFlagNodes(game, s => TEAM_OF(s) !== TEAM_OF(seat))) {
@@ -380,29 +449,12 @@ export function scoreMove(game, seat, memory, { from, to }) {
 
     const enemyHQsUnexcluded = enemyHQs(game, seat)
       .filter(id => !memory.notFlag?.has(id));
-    const 賭三角雷 = enemyHQsUnexcluded.some(hq => dist(to, hq) <= 1.5);
-
-    // 疑似炸彈：剛動過、而且就貼在我方大子旁邊的敵子
-    const movedAgo2 = (memory.ply ?? 0) - (memory.lastMovedPly?.get(to) ?? -99);
-    const 測炸彈 = target && movedAgo2 <= 3 && neighbours(to).some(n => {
-      const o = game.at.get(n);
-      return o && TEAM_OF(o.seat) === TEAM_OF(seat) && (PIECES[o.piece]?.rank ?? 0) >= 6;
-    });
-
-    const 拆地雷 = suspectMine || (deadly > 0 && !memory.notMine?.has(to));
-
-    // 擋炸彈：隊友的大子就在旁邊，而且附近有敵人
-    const 擋炸彈 = mateSeat != null && neighbours(to).some(n => {
-      const o = game.at.get(n);
-      if (!o || o.seat !== mateSeat) return false;
-      return neighbours(n).some(m => {
-        const e = game.at.get(m);
-        return e && TEAM_OF(e.seat) !== TEAM_OF(seat);
-      });
-    });
-
-    const 有理由 = 賭三角雷 || 測炸彈 || 拆地雷 || 擋炸彈;
-    if (revealing && !有理由) return -100;          // 鐵律：沒理由就不准暴露身分
+    const { 賭三角雷, 測炸彈, 拆地雷, 擋炸彈, 有理由 } = engineerReasons(game, seat, memory, from, to);
+    // 鐵律（Lynch）：沒有理由就不准動工兵——不只是「不准暴露身分」。
+    // 量出來原本有 42.3% 的工兵移動是沒有目的的，因為那時只是扣分不是禁止，
+    // 沒有更好的棋時它照走。Lynch：「我希望沒意義的走工兵要降低到零。」
+    // 全盤沒有別的棋可走時，chooseMove 會在一堆 -Infinity 裡挑，不會卡死。
+    if (!有理由) return -Infinity;
 
     if (拆地雷) score += w.engProbe * Math.max(0.5, minePrior(to)) + 14;
     // 工兵停在敵方軍旗旁不只是為了拆雷，更是威嚇（Lynch）：
@@ -419,6 +471,11 @@ export function scoreMove(game, seat, memory, { from, to }) {
     if (target && !couldBeMine && !測炸彈 && !memory.weakKnown?.has(to)) return -50;
 
     if (!有理由) {
+      // 工兵不吃「往敵陣推進」這套獎勵（Lynch 實戰 VWW-8WC 抓到的）：
+      // 它是全盤跑最遠的棋子，所以永遠是最能一步拉近距離的那顆，
+      // 結果它拿最高分、飛進敵陣深處，然後坐在那裡被吃掉。
+      // 那一局右家兩顆工兵先後飛到同一格送死，隊友再補第三顆。
+      score -= hqPullScore;
       // 沒有任務的工兵不該亂動。殘局若還有雷可拆才放寬。
       const hasMineTarget = (memory?.mineSuspect?.size ?? 0) > 0 || (memory?.deadly?.size ?? 0) > 0;
       let own = 0;
@@ -647,7 +704,8 @@ export function scoreMove(game, seat, memory, { from, to }) {
 
   // Lynch：「這手我被吃，我不會回來吃他——因為如果我又死了，他反而可以逃走。」
   // 剛折損在那一格、又還沒摸清對方多大，就別急著再送一顆過去。
-  const justLost = (memory.ply ?? 0) - (memory.lastLostPly?.get(to) ?? -99) <= 2;
+  const sinceLost = (memory.ply ?? 0) - (memory.lastLostPly?.get(to) ?? -999);
+  const justLost = sinceLost <= 2;
   if (justLost && piece !== '炸彈' && !memory.weakKnown?.has(to)) score -= w.noRevenge;
 
   if (deadly > 0) {

@@ -172,7 +172,9 @@ body {
 .last-path { fill: none; stroke-width: 5; opacity: .38; stroke-linejoin: round; stroke-linecap: round;
   stroke-dasharray: 6 7; }
 .last-from { fill: none; stroke-width: 3; opacity: .55; stroke-dasharray: 4 4; }
-.last-to { fill: none; stroke-width: 3.5; opacity: .9; }
+/* 上一步的落點：跟棋子同尺寸的虛線外框。不能用「比較大」來標記——
+   這個遊戲的玩家整局都在比大小，體積上的差異會被讀成階級差異。 */
+.last-to { fill: none; stroke-width: 3; opacity: .95; stroke-dasharray: 7 3; }
 
 .piece-hit { cursor: inherit; }
 .piece--mine { cursor: grab; }

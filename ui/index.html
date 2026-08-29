@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋（試玩版）</title>
-<link rel="stylesheet" href="theme.css?v=54">
+<link rel="stylesheet" href="theme.css?v=63">
 </head>
 <body>
 <div class="app">
@@ -14,10 +14,18 @@
     <div class="gamecode" id="gameCode" title="這一局的代號，回報問題時附上它">—</div>
     <div class="turn" id="turn">準備中</div>
     <div class="controls">
-      <label class="toggle"><input type="checkbox" id="soloMode" checked> 單人（三家電腦）</label>
+      <label class="toggle">模式
+        <select id="mode">
+          <option value="solo" selected>單人（三家電腦）</option>
+          <option value="coop">雙人合作（兩人一隊打電腦）</option>
+          <option value="duelAI">雙人敵對（各帶一個電腦隊友）</option>
+          <option value="duelTeam">雙人敵對（各控一整隊）</option>
+        </select>
+      </label>
       <label class="toggle"><input type="checkbox" id="soundOn" checked> 音效</label>
       <label class="toggle"><input type="checkbox" id="useSearch"> 電腦用搜尋（實驗中，目前較弱）</label>
       <label class="toggle"><input type="checkbox" id="revealAll"> 顯示全部（除錯用）</label>
+      <button class="btn" id="resign">認輸離開</button>
       <button class="btn" id="restart">重新開局</button>
     </div>
   </header>
@@ -30,6 +38,7 @@
       <button class="btn" id="btnRandom">隨機重排</button>
       <button class="btn" id="btnSave">儲存陣型</button>
       <button class="btn" id="btnLoad">讀取陣型</button>
+      <button class="btn" id="btnOtherSeat" hidden>編輯我的另一家</button>
       <button class="btn btn--primary" id="btnConfirm">確定佈陣</button>
     </span>
   </div>
@@ -66,6 +75,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=54"></script>
+<script type="module" src="app.js?v=63"></script>
 </body>
 </html>

@@ -1,0 +1,208 @@
+/* ─────────────────────────────────────────────────────────────
+   theme.css — 這支檔案是「美術可以自由改」的地方。
+   所有顏色、字體、尺寸、圓角、陰影都集中在這裡的變數。
+   ⚠ 契約：HTML 結構與 class 名稱是程式定位用的，請不要更名或刪除；
+     只改樣式與變數值。改壞了最多是難看，不會弄壞遊戲規則。
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --bg: #f4efe3;
+  --panel-bg: #fffdf7;
+  --ink: #2b2b2b;
+  --ink-soft: #6f6a60;
+  --line-road: #cbc0a8;
+  --line-rail: #3b3b3b;
+  --rail-width: 5px;
+  --road-width: 1.6px;
+
+  --seat-0: #2563eb;   /* 下家 */
+  --seat-1: #16a34a;   /* 右家 */
+  --seat-2: #ea580c;   /* 上家 */
+  --seat-3: #9333ea;   /* 左家 */
+
+  --node-fill: #ffffff;
+  --camp-stroke: #dc2626;
+  --hq-fill: #fff8dc;
+  /* 暗棋不用統一的灰色，直接填該家的隊色，才分得出誰是誰 */
+  --hidden-ink: #ffffff;
+  --select-ring: #f59e0b;
+  --move-dot: #10b981;
+
+  --radius: 10px;
+  --font: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  --piece-font-size: 15px;
+
+  /* 軍階符號顏色（CYC 風格：將官星、校官梅花、尉官槓） */
+  --piece-fill: #f2f6f4;
+  --rank-star: #e8b923;
+  --rank-plum: #e2761b;
+  --rank-bar: #e8b923;
+  --rank-tool: #37627a;
+  --rank-mine: #4a4a4a;
+  --rank-bomb: #b03a2e;
+  --rank-flag: #cc2222;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font);
+  /* 棋盤是拿來拖棋子的，不是拿來選字的。不擋的話拖曳會變成框選文字，點擊判定跟著壞掉。 */
+  -webkit-user-select: none; user-select: none;
+}
+.log, .modal input { -webkit-user-select: text; user-select: text; }
+.app {
+  display: grid; grid-template-columns: 1fr 280px; grid-template-rows: auto 1fr;
+  gap: 12px; padding: 12px; height: 100vh;
+}
+.topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; }
+.title { font-size: 18px; margin: 0; }
+.turn { font-weight: 700; }
+.controls { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.toggle { font-size: 13px; color: var(--ink-soft); }
+.btn {
+  font: inherit; padding: 6px 12px; border-radius: var(--radius);
+  border: 1px solid var(--line-road); background: var(--panel-bg); cursor: pointer;
+}
+.btn:hover { background: #f0ebdf; }
+
+.stage { display: grid; place-items: center; min-height: 0; }
+.board { width: 100%; height: 100%; max-height: 100%;
+  touch-action: none;              /* 不讓拖曳被當成捲動或縮放手勢 */
+  -webkit-tap-highlight-color: transparent; }
+
+.side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.panel {
+  background: var(--panel-bg); border-radius: var(--radius);
+  padding: 10px 12px; border: 1px solid #e7dfcc; min-height: 0; display: flex; flex-direction: column;
+}
+.panel-title { font-size: 13px; margin: 0 0 8px; color: var(--ink-soft); font-weight: 600; }
+.seats { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.seat-dot { width: 10px; height: 10px; border-radius: 50%; }
+.seat.is-turn { font-weight: 700; }
+.seat.is-out { opacity: .45; text-decoration: line-through; }
+.seat-note { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
+.log { list-style: none; margin: 0; padding: 0; overflow-y: auto; font-size: 13px; display: grid; gap: 4px; }
+.log li { color: var(--ink-soft); }
+.log li.is-big { color: var(--ink); font-weight: 600; }
+
+/* 棋盤元素 */
+.rail { stroke: var(--line-rail); stroke-width: var(--rail-width); fill: none; }
+.road { stroke: var(--line-road); stroke-width: var(--road-width); }
+.node { fill: var(--node-fill); stroke-width: 2.5; }
+.node--camp { stroke: var(--camp-stroke); stroke-width: 4; }
+.node--hq { fill: var(--hq-fill); stroke-width: 3; }
+.node--center { stroke: #555; }
+.piece { cursor: default; }
+.piece--mine { cursor: pointer; }
+.piece-label { font-size: var(--piece-font-size); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+
+.is-selected .piece-box { stroke: var(--select-ring); stroke-width: 4; }
+.move-dot { fill: var(--indicator, var(--move-dot)); stroke: #fff; stroke-width: 2; cursor: pointer; }
+.move-dot--capture { fill: none; stroke: var(--indicator, var(--move-dot)); stroke-width: 4;
+  paint-order: stroke; filter: drop-shadow(0 0 2px #fff); }
+.move-target { cursor: pointer; }
+.flag-mark { fill: var(--camp-stroke); font-size: 11px; text-anchor: middle; }
+
+/* 佈陣列 */
+/* [hidden] 必須明確蓋過 display:flex，否則開局後佈陣列不會消失 */
+.setupbar[hidden] { display: none; }
+.setupbar {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
+  background: var(--panel-bg); border: 1px solid #e7dfcc; border-radius: var(--radius);
+  padding: 8px 12px; font-size: 14px;
+}
+.setup-who { font-weight: 700; }
+.setup-timer { font-variant-numeric: tabular-nums; font-weight: 700; }
+.setup-timer.is-urgent { color: var(--camp-stroke); }
+.setup-hint { color: var(--ink-soft); font-size: 13px; }
+.setup-hint.is-error { color: var(--camp-stroke); }
+.setup-actions { margin-left: auto; display: flex; gap: 8px; }
+.btn--primary { background: var(--seat-0); color: #fff; border-color: transparent; }
+.btn--primary:hover { filter: brightness(1.08); background: var(--seat-0); }
+.seat.is-ready .seat-note { color: var(--move-dot); }
+
+/* 棋子與軍階符號 */
+.piece-box { fill: var(--piece-fill); }
+/* 暗棋填上各家的隊色，一眼分得出是哪一家（自己的棋子維持白底彩框） */
+.piece--hidden.piece--seat0 .piece-box { fill: var(--seat-0); }
+.piece--hidden.piece--seat1 .piece-box { fill: var(--seat-1); }
+.piece--hidden.piece--seat2 .piece-box { fill: var(--seat-2); }
+.piece--hidden.piece--seat3 .piece-box { fill: var(--seat-3); }
+
+.piece-label { font-size: var(--piece-font-size); text-anchor: middle; dominant-baseline: central;
+  pointer-events: none; fill: var(--ink); }
+.ins--star { fill: var(--rank-star); }
+.ins--plum circle { fill: var(--rank-plum); }
+.ins--bar { fill: var(--rank-bar); }
+.ins--tool { fill: var(--rank-tool); }
+.ins--tool-handle { stroke: var(--rank-tool); stroke-width: 2.2; stroke-linecap: round; }
+.ins--mine { fill: var(--rank-mine); }
+.ins--mine-spikes { stroke: var(--rank-mine); stroke-width: 1.6; }
+.ins--bomb { fill: var(--rank-bomb); }
+.ins--bomb-fuse { stroke: var(--rank-bomb); stroke-width: 1.6; fill: none; stroke-linecap: round; }
+.ins--flag { fill: var(--rank-flag); }
+.ins--flag-pole { stroke: var(--ink); stroke-width: 1.6; }
+
+.handoff { position: absolute; padding: 14px 28px; font-size: 16px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.stage { position: relative; }
+
+/* 結局畫面 */
+.overlay[hidden] { display: none; }
+.overlay {
+  position: fixed; inset: 0; display: grid; place-items: center; z-index: 20;
+  background: rgba(24, 20, 14, .55); backdrop-filter: blur(3px);
+  animation: overlay-in .28s ease-out;
+}
+@keyframes overlay-in { from { opacity: 0 } to { opacity: 1 } }
+.overlay-card {
+  background: var(--panel-bg); border-radius: 20px; padding: 36px 52px; text-align: center;
+  box-shadow: 0 24px 60px rgba(0,0,0,.35); animation: card-in .34s cubic-bezier(.2,1.2,.4,1);
+  min-width: 320px;
+}
+@keyframes card-in { from { transform: translateY(18px) scale(.94); opacity: 0 } to { transform: none; opacity: 1 } }
+.overlay-emblem { font-size: 56px; line-height: 1; margin-bottom: 10px; }
+.overlay-title { margin: 0 0 6px; font-size: 30px; letter-spacing: .04em; }
+.overlay-title.is-win { color: var(--rank-star); }
+.overlay-title.is-lose { color: var(--ink-soft); }
+.overlay-sub { margin: 0 0 22px; color: var(--ink-soft); font-size: 14px; }
+.overlay-btn { padding: 12px 28px; font-size: 16px; }
+
+/* 上一步的痕跡 */
+.last-path { fill: none; stroke-width: 5; opacity: .38; stroke-linejoin: round; stroke-linecap: round;
+  stroke-dasharray: 6 7; }
+.last-from { fill: none; stroke-width: 3; opacity: .55; stroke-dasharray: 4 4; }
+.last-to { fill: none; stroke-width: 3.5; opacity: .9; }
+
+.piece-hit { cursor: inherit; }
+.piece--mine { cursor: grab; }
+.piece--mine.is-dragging { cursor: grabbing; opacity: .55; }
+
+/* 對話框（陣型管理） */
+.modal[hidden] { display: none; }
+.modal { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center;
+  background: rgba(24,20,14,.45); backdrop-filter: blur(2px); }
+.modal-card { background: var(--panel-bg); border-radius: 16px; padding: 22px 24px; min-width: 340px;
+  max-width: 460px; box-shadow: 0 18px 46px rgba(0,0,0,.3); }
+.modal-title { margin: 0 0 14px; font-size: 17px; }
+.modal-body { display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+.modal input[type="text"] { font: inherit; padding: 9px 12px; border-radius: 10px;
+  border: 1px solid var(--line-road); width: 100%; background: #fff; color: var(--ink); }
+.saved-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
+  border: 1px solid #e7dfcc; background: #fff; }
+.saved-name { font-weight: 600; }
+.saved-date { color: var(--ink-soft); font-size: 12px; }
+.saved-row .btn { padding: 4px 10px; font-size: 13px; }
+.saved-row .spacer { margin-left: auto; }
+.modal-empty { color: var(--ink-soft); font-size: 14px; padding: 8px 2px; }
+.btn--danger { color: var(--camp-stroke); }
+
+/* 走法提示的顏色＝看棋的人自己的隊色 */
+.ind-seat0 { --indicator: var(--seat-0); }
+.ind-seat1 { --indicator: var(--seat-1); }
+.ind-seat2 { --indicator: var(--seat-2); }
+.ind-seat3 { --indicator: var(--seat-3); }
+
+/* 轉角圓弧：畫粗一點，讓它明顯是「可以順著滑過去的鐵路圓角」 */
+.rail--arc { stroke-width: calc(var(--rail-width) + 1px); stroke-linecap: round; }

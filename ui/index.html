@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>四國軍棋（本機測試版）</title>
+<link rel="stylesheet" href="theme.css?v=48">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <h1 class="title">四國軍棋</h1>
+    <div class="turn" id="turn">準備中</div>
+    <div class="controls">
+      <label class="toggle"><input type="checkbox" id="soloMode" checked> 單人（三家電腦）</label>
+      <label class="toggle"><input type="checkbox" id="soundOn" checked> 音效</label>
+      <label class="toggle"><input type="checkbox" id="useSearch"> 電腦用搜尋（實驗中，目前較弱）</label>
+      <label class="toggle"><input type="checkbox" id="revealAll"> 顯示全部（除錯用）</label>
+      <button class="btn" id="restart">重新開局</button>
+    </div>
+  </header>
+
+  <div class="setupbar" id="setupbar" hidden>
+    <span class="setup-who" id="setupWho"></span>
+    <span class="setup-timer" id="setupTimer"></span>
+    <span class="setup-hint" id="setupHint">點兩顆自己的棋子即可互換位置</span>
+    <span class="setup-actions">
+      <button class="btn" id="btnRandom">隨機重排</button>
+      <button class="btn" id="btnSave">儲存陣型</button>
+      <button class="btn" id="btnLoad">讀取陣型</button>
+      <button class="btn btn--primary" id="btnConfirm">確定佈陣</button>
+    </span>
+  </div>
+
+  <main class="stage">
+    <svg class="board" id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+  </main>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card">
+      <h3 class="modal-title" id="modalTitle"></h3>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-actions" id="modalActions"></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay" hidden>
+    <div class="overlay-card">
+      <div class="overlay-emblem" id="overlayEmblem"></div>
+      <h2 class="overlay-title" id="overlayTitle"></h2>
+      <p class="overlay-sub" id="overlaySub"></p>
+      <button class="btn btn--primary overlay-btn" id="overlayAgain">再玩一局</button>
+    </div>
+  </div>
+
+  <aside class="side">
+    <section class="panel">
+      <h2 class="panel-title">座位</h2>
+      <ul class="seats" id="seats"></ul>
+    </section>
+    <section class="panel">
+      <h2 class="panel-title">戰報</h2>
+      <ol class="log" id="log"></ol>
+    </section>
+  </aside>
+</div>
+<script type="module" src="app.js?v=48"></script>
+</body>
+</html>

@@ -33,13 +33,18 @@
 
   /* 軍階符號顏色（CYC 風格：將官星、校官梅花、尉官槓） */
   --piece-fill: #f2f6f4;
-  --rank-star: #e8b923;
-  --rank-plum: #e2761b;
-  --rank-bar: #e8b923;
-  --rank-tool: #37627a;
-  --rank-mine: #4a4a4a;
-  --rank-bomb: #b03a2e;
-  --rank-flag: #cc2222;
+  /* 三個階層必須是三個顏色。原本 --rank-star 與 --rank-bar 是同一個色碼 #e8b923，
+     等於將官和尉官同色；--rank-plum 的橘褐跟黃只差約 30° 色相，小尺寸分不開。
+     改成金／藍／灰：色相拉到最遠，而且明度本身就在講強弱（金最亮 → 灰最暗）。
+     規格見 docs/piece-symbols-spec.md。 */
+  --rank-star: #C77800;   /* 將官　金 */
+  --rank-plum: #1D4ED8;   /* 校官　藍 */
+  --rank-bar:  #5B6B7F;   /* 尉官　灰 */
+  --rank-special: #B91C1C; /* 地雷、炸彈　深紅 */
+  --rank-tool: #5B6B7F;   /* 工兵　灰（與尉官同層） */
+  --rank-mine: #B91C1C;   /* 地雷　深紅 */
+  --rank-bomb: #B91C1C;   /* 炸彈　深紅 */
+  --rank-flag: #C77800;   /* 軍旗　金 */
 }
 
 * { box-sizing: border-box; }
@@ -233,15 +238,29 @@ body {
 }
 
 /* 新手指南 */
-.guide { display: grid; gap: 12px; width: min(70vw, 620px); }
-.guide-tabs { display: flex; gap: 6px; }
+/* 指南要夠寬才讀得順。modal-card 預設 max-width: 460px 會把內容夾到要左右捲，
+   所以這裡把含有 .guide 的那張卡片放寬。 */
+.modal-card:has(.guide) { max-width: min(92vw, 820px); max-height: 90vh; overflow: hidden;
+  display: flex; flex-direction: column; }
+.modal-card:has(.guide) .modal-body { min-height: 0; display: flex; }
+.guide { display: flex; flex-direction: column; width: min(86vw, 760px); max-width: 100%; }
+.guide-body, .guide-body * { overflow-wrap: anywhere; }
+/* 分頁要釘在最上面：往下捲內文時，切換的按鈕不能跟著捲不見。 */
+.guide-tabs {
+  display: flex; gap: 6px;
+  position: sticky; top: 0; z-index: 2;
+  background: var(--panel-bg);
+  padding: 2px 0 10px;
+}
 /* 用較高的選擇器特異度，否則 .btn 自己的 color 會蓋過來，選中的分頁會變成一塊黑色 */
 .guide-tabs .guide-tab.is-on {
   background: var(--ink);
   color: var(--panel-bg);       /* 不是 --surface：那個變數不存在，字色會回退成跟背景同色 */
   border-color: var(--ink);
 }
-.guide-body { max-height: min(60vh, 460px); overflow-y: auto; line-height: 1.75; font-size: 14px; }
+/* 捲動發生在這一層（不是整張卡片），分頁才釘得住 */
+.guide { max-height: 82vh; overflow: hidden; }
+.guide-body { flex: 1; min-height: 0; overflow-y: auto; line-height: 1.75; font-size: 14px; }
 .guide-body h3 { font-size: 15px; margin: 18px 0 6px; }
 .guide-body h3:first-child { margin-top: 0; }
 .guide-body p { margin: 6px 0; }
@@ -250,3 +269,96 @@ body {
 .guide-body b { color: var(--ink); }
 .guide-body { color: var(--ink); }
 .g-rank { font-weight: 600; letter-spacing: .04em; }
+
+/* 新手指南的圖示與動畫 */
+/* display: contents 會蓋過 [hidden] 的 display:none，一定要明寫這一條 */
+.debug-tools { display: contents; }
+.debug-tools[hidden] { display: none !important; }
+
+/* 規則說明要比「認輸」「重新開局」顯眼——它是新手唯一的入口 */
+#guide {
+  background: var(--seat-0); color: #fff; border-color: var(--seat-0); font-weight: 700;
+}
+#guide:hover { filter: brightness(1.08); }
+.g-svg { display: block; margin: 10px auto 6px; width: 100%; max-width: 320px; height: auto; }
+.g-t { font-size: 11px; fill: var(--ink); }
+.g-t--seat { font-size: 13px; font-weight: 700; fill: #fff; }
+.g-t--tiny { font-size: 10.5px; fill: var(--ink-soft); }
+.g-t--em { font-size: 11px; font-weight: 700; fill: var(--ink); }
+.g-seat { stroke: none; }
+.g-seat0 { fill: var(--seat-0); } .g-seat1 { fill: var(--seat-1); }
+.g-seat2 { fill: var(--seat-2); } .g-seat3 { fill: var(--seat-3); }
+.g-mate { stroke: var(--ink-soft); stroke-width: 2; stroke-dasharray: 5 4; fill: none; }
+.g-arrow { stroke: var(--ink-soft); stroke-width: 1.6; fill: none; }
+.g-arrowhead { fill: var(--ink-soft); }
+.g-chip, .g-node { fill: var(--node-fill); stroke: var(--seat-0); stroke-width: 2; }
+.g-hq { fill: var(--hq-fill); stroke: var(--seat-0); stroke-width: 2; }
+.g-camp { fill: none; stroke: var(--camp-stroke); stroke-width: 3; }
+.g-road { stroke: var(--line-road); stroke-width: var(--road-width); }
+.g-rail { stroke: var(--line-rail); stroke-width: var(--rail-width); }
+.g-ins .ins { fill: var(--seat-2); stroke: none; }
+.g-ins .ins--tool-handle, .g-ins .ins--tool { fill: none; stroke: var(--seat-0); stroke-width: 1.6; }
+.g-ins .ins--tool { fill: var(--seat-0); }
+
+.demo { display: grid; gap: 10px; justify-items: center; }
+.demo-board { width: 100%; max-width: 460px; height: auto; }
+.demo-box { fill: var(--node-fill); stroke: var(--seat-0); stroke-width: 2; }
+.demo-hq { fill: var(--hq-fill); stroke: var(--seat-0); stroke-width: 2.4; }
+.demo-camp { fill: none; stroke: var(--camp-stroke); stroke-width: 3; }
+.demo-name { font-size: 11px; fill: var(--ink); }
+.demo-ins .ins { fill: var(--seat-2); stroke: none; }
+.demo-cell { transition: opacity .3s; }
+.demo-cell.is-flash .demo-box, .demo-cell.is-flash .demo-hq { stroke: var(--select-ring); stroke-width: 4; }
+.demo-cell.is-gone { opacity: .12; }
+.demo-foe { transition: none; }
+.demo-foe.is-moving { transition: transform .9s ease-in-out; }
+.demo-foe-box { fill: var(--seat-1); }
+.demo-foe-name { font-size: 11px; fill: #fff; font-weight: 600; }
+.demo-board.is-win .demo-cell { opacity: .25; }
+.demo-caption { font-size: 13.5px; line-height: 1.65; text-align: center; min-height: 2.8em; }
+.demo-bar { display: flex; align-items: center; gap: 12px; }
+.demo-dots { font-size: 12px; color: var(--ink-soft); }
+.demo-btn:disabled { opacity: .4; cursor: default; }
+
+
+/* ── 窄螢幕：手機實機回報，桌機的雙欄在這裡完全不能用 ─────────────────
+   問題（Android Chrome 實測）：
+   1. 雙欄沒收合 → 棋盤被擠到左下角不到 150px，根本點不到
+   2. 容器太窄 → 中文自動折行，「四國軍棋」「確定佈陣」變成一個字一行
+   3. 模式下拉右側被裁掉
+   收成單欄：棋盤佔滿寬度置頂，座位／戰報移到下面。 */
+@media (max-width: 760px) {
+  .app {
+    grid-template-columns: 1fr;          /* 單欄 */
+    grid-template-rows: auto auto auto auto;
+    padding: 10px;
+    gap: 10px;
+    height: auto;                        /* 手機要能往下捲，不要鎖在一屏 */
+    min-height: 100dvh;
+  }
+  .topbar {
+    flex-wrap: wrap;                     /* 讓它換行，而不是把每個字擠成一行 */
+    gap: 8px 12px;
+    align-items: baseline;
+  }
+  .title, .turn, .gamecode, .btn, .toggle, .setup-who, .setup-hint {
+    white-space: nowrap;                 /* 中文不要逐字折行 */
+  }
+  .controls { margin-left: 0; flex-wrap: wrap; gap: 8px; width: 100%; }
+  .controls select { max-width: 100%; }
+
+  .stage { order: -1; }                  /* 棋盤排到最上面：那是唯一要操作的東西 */
+  .board { width: 100%; height: auto; }
+
+  .setupbar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+  .setup-actions { margin-left: 0; width: 100%; flex-wrap: wrap; }
+  .setup-actions .btn { flex: 1 1 auto; }
+
+  .side { flex-direction: column; }
+  .panel { max-height: 34vh; }
+}
+
+/* 窄螢幕（單格 < 26px）：只留符號，文字拿掉並把符號置中。
+   6.5px 的中文讀不出來，留著只會蓋掉符號。 */
+.board.is-compact .piece-label { display: none; }
+.board.is-compact .insignia { transform: translateY(6px); }

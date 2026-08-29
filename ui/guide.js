@@ -2,41 +2,44 @@
 //
 // 為什麼做在遊戲裡而不是另開網頁：新玩家是「打開就想玩」，
 // 願意先去讀一頁規則的人很少。放在按得到的地方，卡住時才會去看。
+import { seatDiagram, rankLadder, terrainDiagram } from './guide-art.js?v=79';
+import { buildFlagDemo } from './guide-demo.js?v=79';
+
 const SECTIONS = [
   {
     id: 'rules', label: '基本規則',
-    html: `
-<h3>這是什麼遊戲</h3>
-<p>四個人、兩兩一隊。<b>坐你對面的是隊友</b>，左右兩家是敵人。所有棋子都蓋著——
-<b>你看不到隊友的棋，他也看不到你的</b>。你只能從「誰吃掉誰」去推理場上還剩什麼。</p>
-<p><b>贏的條件：拿下敵方兩家的軍旗。</b>只扛掉一家不算贏。</p>
+    build: () => {
+      const box = document.createElement('div');
+      const h = (t) => { const e = document.createElement('h3'); e.textContent = t; return e; };
+      const p = (html) => { const e = document.createElement('p'); e.innerHTML = html; return e; };
 
-<h3>棋子大小</h3>
-<p class="g-rank">司令 ＞ 軍長 ＞ 師長 ＞ 旅長 ＞ 團長 ＞ 營長 ＞ 連長 ＞ 排長 ＞ 工兵</p>
-<p>大的吃小的，<b>一樣大就同歸於盡</b>。另有三種特殊棋子：</p>
-<ul>
-  <li><b>炸彈</b>：碰到任何棋子都同歸於盡（包括司令）。每家兩顆。</li>
-  <li><b>地雷</b>：不能移動。撞上去的都會死——<b>只有工兵拆得掉</b>。每家三顆。</li>
-  <li><b>軍旗</b>：不能移動。<b>被任何棋子碰到，該家立刻全軍覆沒。</b></li>
-</ul>
+      box.append(h('軍旗在哪裡？要怎麼贏？'),
+        p('這是最重要的一件事，先看一遍動畫：'),
+        buildFlagDemo());
 
-<h3>怎麼走</h3>
-<ul>
-  <li><b>公路（細線）</b>：一次走一格。</li>
-  <li><b>鐵路（粗線）</b>：沿直線滑很多格，中間不能有棋子擋著。</li>
-  <li><b>轉彎</b>：一般棋子在鐵路上不能轉彎，<b>只有工兵可以</b>——所以工兵一轉彎，
-      等於告訴全場「我是工兵」。</li>
-  <li><b>行營（圓圈）</b>：安全區，<b>裡面的棋子吃不到</b>，但可以隨時走出來。</li>
-  <li><b>大本營（本壘板）</b>：軍旗放在其中一個。<b>任何棋子走進去就再也不能動。</b></li>
-</ul>
+      box.append(h('四個人怎麼坐、誰先走'),
+        p('<b>坐你對面的是隊友</b>，左右兩家是敵人。但<b>你看不到隊友的棋，他也看不到你的</b>——' +
+          '你只能從「誰吃掉誰」去推理。'),
+        seatDiagram());
 
-<h3>其他</h3>
-<ul>
-  <li>行棋順序<b>逆時針</b>。</li>
-  <li><b>司令陣亡時，該家的軍旗位置會公開</b>——保護司令不只是保護一顆大子。</li>
-  <li>被扛旗的那家，所有棋子從盤上消失，輪到他就跳過。</li>
-  <li><b>連續 60 步沒有人吃子就判和</b>，中途遊戲會問你要不要提和。</li>
-</ul>`,
+      box.append(h('棋子大小'),
+        rankLadder(),
+        p('大的吃小的，<b>一樣大就同歸於盡</b>。三種特殊棋子：' +
+          '<b>炸彈</b>碰到誰都同歸於盡（包括司令）；' +
+          '<b>地雷</b>不能動，撞上去的都會死，<b>只有工兵拆得掉</b>；' +
+          '<b>軍旗</b>不能動，被碰到就全家出局。'));
+
+      box.append(h('棋盤上的四種地方'),
+        terrainDiagram(),
+        p('<b>轉彎</b>：一般棋子在鐵路上不能轉彎，<b>只有工兵可以</b>——' +
+          '所以工兵一轉彎，等於告訴全場「我是工兵」。'));
+
+      box.append(h('還要知道的兩件事'),
+        p('<b>司令陣亡時，該家的軍旗位置會公開</b>——保護司令不只是保護一顆大子。<br>' +
+          '<b>連續 60 步沒有人吃子就判和。</b>不過在那之前（場上還有幾家 × 8 步，四家就是 32 步），' +
+          '遊戲會先問你要不要提和，不必乾等。'));
+      return box;
+    },
   },
   {
     id: 'skill', label: '進階技巧',
@@ -68,7 +71,7 @@ const SECTIONS = [
 <p><b>怎麼算確定不是炸彈？</b>炸彈碰到誰都同歸於盡，所以
 <b>凡是吃掉別人還活著的棋子，一定不是炸彈</b>。</p>
 
-<h3>師長是最好的探子</h3>
+<h3>師長是很好的探子</h3>
 <p>能吃掉師長的只有司令、軍長、炸彈三種。所以師長死掉時你會得到<b>很精確的情報</b>。
 而且師長換掉一顆炸彈，等於保住了你的司令和軍長。</p>
 
@@ -123,7 +126,9 @@ export function buildGuide() {
   const body = document.createElement('div');
   body.className = 'guide-body';
   const show = (i) => {
-    body.innerHTML = SECTIONS[i].html;
+    body.innerHTML = '';
+    if (SECTIONS[i].build) body.append(SECTIONS[i].build());
+    else body.innerHTML = SECTIONS[i].html;
     [...tabs.children].forEach((b, j) => b.classList.toggle('is-on', i === j));
     body.scrollTop = 0;
   };

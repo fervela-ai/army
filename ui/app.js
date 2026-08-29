@@ -1,13 +1,13 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=67';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=67';
-import { localSession } from './session.js?v=67';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=67';
-import { buildGuide } from './guide.js?v=67';
-import { createBoardView } from './board.js?v=67';
-import { SFX, setEnabled } from './sound.js?v=67';
+import { SEATS } from '../engine/src/board.mjs?v=79';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=79';
+import { localSession } from './session.js?v=79';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=79';
+import { buildGuide } from './guide.js?v=79';
+import { createBoardView } from './board.js?v=79';
+import { SFX, setEnabled } from './sound.js?v=79';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -19,7 +19,7 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools']
   .map(id => [id, document.getElementById(id)]));
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
@@ -697,15 +697,24 @@ els.btnOtherSeat.addEventListener('click', async () => {
   await sync();
 });
 
+// 除錯開關預設藏起來——要公開給朋友玩，實驗性與除錯用的東西不該露出來。
+// 網址加 ?debug=1 就會出現（自己測試時用）。
+// 雙人模式目前只有熱座（同一台電腦輪流），還不適合給朋友玩，先一起藏起來。
+if (new URLSearchParams(location.search).has('debug')) {
+  els.debugTools.hidden = false;
+  els.modeTools.hidden = false;
+}
+
 // 規則說明：新手是「打開就想玩」，願意先讀一頁規則的很少，
 // 所以放在按得到的地方，卡住時才會去看。
-els.guide.addEventListener('click', () => {
+function openGuide() {
   showModal({
     title: '四國軍棋　新手指南',
     body: buildGuide(),
     actions: [{ label: '開始玩', primary: true, onClick: closeModal }],
   });
-});
+}
+els.guide.addEventListener('click', openGuide);
 
 els.btnConfirm.addEventListener('click', confirmSetup);
 els.revealAll.addEventListener('change', sync);
@@ -749,4 +758,10 @@ els.restart.addEventListener('click', async () => {
   newGame();
 });
 // 進站先問代稱，問完才開局（第一次才會問，之後記住）
-askNickname().then(newGame);
+// 第一次進站的人不知道規則說明在哪，直接跳給他看；看過一次就不再跳。
+const SEEN_GUIDE = 'army-online:seen-guide';
+askNickname().then(newGame).then(() => {
+  if (localStorage.getItem(SEEN_GUIDE)) return;
+  try { localStorage.setItem(SEEN_GUIDE, '1'); } catch { /* 存不下不影響 */ }
+  openGuide();
+});

@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=67';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=67';
-import { insignia } from './insignia.js?v=67';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=79';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=79';
+import { insignia } from './insignia.js?v=79';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -132,6 +132,11 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
 
   // 依「該玩家看得到的盤面」重畫棋子與提示
   function render({ board, mySeats = [], selected = null, moves = [], revealedFlags = [], lastMove = null, hide = [], viewerSeat = 0 }) {
+    // 窄螢幕只留符號、不畫文字：手機一格約 19.8px，中文只有 6.5px，是雜訊不是資訊。
+    // 斷點用「單格的實際像素」而不是視窗寬度——棋盤尺寸、平板橫拿、瀏覽器縮放
+    // 都會讓視窗寬度失準，格子大小永遠正確。（規格 docs/piece-symbols-spec.md）
+    const cellPx = (svg.getBoundingClientRect().width || 0) / W * 42;
+    svg.classList.toggle('is-compact', cellPx > 0 && cellPx < 26);
     layers.pieces.replaceChildren();
     layers.hints.replaceChildren();
     layers.marks.replaceChildren();
@@ -185,7 +190,7 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
       }));   // 暗棋的底色由 theme.css 依 .piece--hidden.piece--seatN 決定
       if (known) {
         const badge = insignia(occ.piece);
-        badge.setAttribute('transform', 'translate(0,-8.5) scale(1.3)');
+        badge.setAttribute('transform', 'translate(0,-6) scale(1)');   // 新符號本身已是規格尺寸，不再放大
         face.appendChild(badge);
         const label = el('text', { class: 'piece-label', y: 9.5 });
         label.textContent = occ.piece;
@@ -241,7 +246,7 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
       }));
       if (piece) {
         const badge = insignia(piece);
-        badge.setAttribute('transform', 'translate(0,-8.5) scale(1.3)');
+        badge.setAttribute('transform', 'translate(0,-6) scale(1)');   // 新符號本身已是規格尺寸，不再放大
         face.appendChild(badge);
         const label = el('text', { class: 'piece-label', y: 9.5 });
         label.textContent = piece;

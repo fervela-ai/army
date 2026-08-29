@@ -1,12 +1,12 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=63';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=63';
-import { localSession } from './session.js?v=63';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=63';
-import { createBoardView } from './board.js?v=63';
-import { SFX, setEnabled } from './sound.js?v=63';
+import { SEATS } from '../engine/src/board.mjs?v=64';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=64';
+import { localSession } from './session.js?v=64';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=64';
+import { createBoardView } from './board.js?v=64';
+import { SFX, setEnabled } from './sound.js?v=64';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。

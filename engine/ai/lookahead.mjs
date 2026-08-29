@@ -2,6 +2,7 @@
 // 一步評分 AI 最大的破綻是「只看我這步吃到什麼，不看走完之後對方能吃掉我什麼」。
 // 這支模組回答：把棋子放到某格，下一手被幹掉的機率有多高、賠多少。
 import { TEAM_OF } from '../src/board.mjs';
+import { BOARD } from '../src/board.mjs';
 import { PIECES, legalMoves } from '../src/rules.mjs';
 
 // 棋子的身價。軍旗無價（被扛就輸），地雷不可移動但很值錢（它擋住整條路）。
@@ -60,11 +61,23 @@ export function pLoseAgainstUnknown(myPiece) {
 }
 
 // 敵方下一手構得到的所有格子。算一次給整輪用，不要每個候選走法都重算。
+// 這顆敵方棋子「有沒有可能會動」——只准用公開資訊判斷。
+//
+// 原本直接查 PIECES[o.piece].movable，但那是**偷看**：movable 只有地雷和軍旗是 false，
+// 等於 AI 免費知道哪些敵子是地雷。真人得自己提心吊膽，AI 不該有這個特權。
+// 公開可知的不能動只有兩種：大本營裡的棋子（規則明訂只進不出，格子位置公開），
+// 以及已經顯露的軍旗。其餘一律當成「可能會動」。
+export function mightMove(game, id, o) {
+  if (BOARD.nodes.get(id)?.kind === 'hq') return false;        // 大本營裡的棋子不能再動
+  if (game.revealedFlags?.has(o.seat) && o.piece === '軍旗') return false;  // 已公開的軍旗
+  return true;
+}
+
 export function threatMap(game, seat) {
   const map = new Map();                               // 格子 → 威脅它的敵方棋子數
   for (const [id, o] of game.at) {
     if (TEAM_OF(o.seat) === TEAM_OF(seat)) continue;
-    if (!PIECES[o.piece].movable) continue;
+    if (!mightMove(game, id, o)) continue;
     for (const to of legalMoves(game, id)) map.set(to, (map.get(to) ?? 0) + 1);
   }
   return map;

@@ -5,7 +5,7 @@ import { BOARD, SEATS, TEAM_OF } from '../src/board.mjs';
 import { PIECES } from '../src/rules.mjs';
 import { movesForSeat } from '../src/game.mjs';
 import { legalMoves } from '../src/rules.mjs';
-import { threatMap, hangRisk, VALUE, valueOf, engineerValue } from './lookahead.mjs';
+import { threatMap, hangRisk, VALUE, valueOf, engineerValue, mightMove } from './lookahead.mjs';
 import { buildBelief, buildSelfBelief, pLose, leakOf, infoGainOf } from './belief.mjs';
 import { TUNED } from './weights-tuned.mjs';
 import { nodeXY } from '../src/geometry.mjs';
@@ -69,7 +69,8 @@ const DEFAULT_W = {
   probeSmall: 4.0,      // 小兵探路
   bigAvoid: 4.0,        // 大子別碰未知
   bombFear: 12,         // 剛靠過來的可能是炸彈
-  backRowProbe: 3.0,    // 小兵去探敵方後兩排
+  backRowProbe: 160,
+  bigVsUntested: 60,    // 大子在工兵測過之前撞後兩排未知格（Lynch：一定是工兵拆過才衝）     // 小兵去探敵方後兩排。3.0 太弱——軍旗住在後兩排，探路是唯一的進攻途徑
   urgencyCapture: 14,   // 快和局了就出手
   urgencySpan: 45,      // 從第幾步開始緊張（60 減這個數）
   contactPull: 0.8,     // 太久沒吃子時去找人打
@@ -86,10 +87,16 @@ const DEFAULT_W = {
   backRowStay: 14,      // 後兩排非必要不准動——一動就等於宣告「我不是地雷」
   blockMate: 7,         // 停在隊友陣地的主幹道上會擋住他出兵
   campFromBack: 8,      // 用後兩排的棋子去佔行營要扣分（那些子在守家）
+  campAfterLoss: 45,    // 自家行營旁邊剛折損棋子＝立刻去坐進去，別去報仇（Lynch）
+  openingCamp: 12,      // 開局前五步先佔行營（Lynch），後兩排的子不算
+  bombInCamp: 30,       // 炸彈進駐自家門前行營＝Lynch 的防守骨架（安全、匿名、能反擊）
+  frontCampHold: 26,    // 佔住自家軍旗前面的行營（Lynch：超級重要的據點，絕對不能不守）
+  frontCampLeave: 20,   // 沒事不要離開門前的行營——空出來就是給對方踏板
   noRevenge: 10,        // 剛折損在那格，不要馬上再送一顆回去
   defendPull: 9,        // 有敵人逼近自家軍旗時，把棋子拉回去攔截
   defendKill: 25,       // 吃掉正在逼近軍旗的敵人
   hqRush: 40,           // 敵方大本營沒動過的那顆有一半機率是軍旗，值得衝
+  finalFlagGamble: 200, // 只剩一家敵人時，踏進未排除的大本營＝五五波直接贏，要壓過一切
   frozenIntruder: 45,   // 別花手去吃「困在大本營裡」的敵子——它已經不能動了
   deathSquare: 18,      // 那一格剛吞掉我方棋子，別急著再送一顆過去
   // （不再用時間視窗：死亡格記整場）
@@ -310,7 +317,7 @@ const nearestEnemyPiece = (game, seat, to) => {
   let best = Infinity;
   for (const [id, o] of game.at) {
     if (TEAM_OF(o.seat) === TEAM_OF(seat)) continue;
-    if (!PIECES[o.piece].movable) continue;      // 地雷軍旗不會動，靠過去也打不到
+    if (!mightMove(game, id, o)) continue;      // 只用公開資訊判斷會不會動（不准偷看是不是地雷）
     best = Math.min(best, dist(to, id));
   }
   return best;
@@ -324,7 +331,7 @@ const flagThreats = (game, seat, flagNodes) => {
   if (!flagNodes.length) return out;
   for (const [id, o] of game.at) {
     if (TEAM_OF(o.seat) === TEAM_OF(seat)) continue;
-    if (!PIECES[o.piece]?.movable) continue;
+    if (!mightMove(game, id, o)) continue;
     const d = Math.min(...flagNodes.map(f => dist(id, f)));
     if (d <= 4.5) out.push({ id, d });
   }
@@ -488,6 +495,9 @@ export function scoreMove(game, seat, memory, { from, to }) {
 
   // ── 炸彈要留給大子，而且不能大搖大擺推過去 ──
   if (piece === '炸彈') {
+    // 已經進駐門前行營的炸彈，沒有值得換的目標就別出來——出來就失去安全與匿名。
+    if (kindOf(from) === 'camp' && [`P${seat}-r4c2`, `P${seat}-r4c4`].includes(from)
+        && !enemyTarget) score -= w.bombInCamp;
     // 全隊只有兩顆炸彈，至少要換到司令或軍長才划算。
     // bigThreat 記的是「我方多大的子死在那格」——我的軍長(8)死在那，對方至少是軍長。
     if (enemyTarget && bigThreat >= 8) score += w.bombBig;        // 確認至少是軍長：值得換
@@ -496,7 +506,34 @@ export function scoreMove(game, seat, memory, { from, to }) {
     // Lynch：「缺點是會炸錯裝大子的，優點是沒損失師長就炸掉司令很賺。
     //         保守不會連贏，要可以出其不意。」所以給它一個機會，但不常做。
     else if (enemyTarget && (memory.revenge?.get(to) ?? 0) > 0) score += w.bombMid * 0.5;
+    // Lynch 的防守骨架：炸彈自己站進門前行營，師長在旁邊當明面上的守衛。
+    // 行營是安全區，沒人吃得到它，而且沒人知道那顆是什麼——
+    // 敵人吃掉旁邊的師長，炸彈就從行營出來反擊。
+    // （佈陣時行營必須空著，所以這是開局後要走出來的陣型，不是擺出來的。）
+    else if ([`P${seat}-r4c2`, `P${seat}-r4c4`].includes(to) && kindOf(from) !== 'camp')
+      score += w.bombInCamp;                  // 只有還沒進駐時才給，否則它會進進出出
     else score -= w.bombIdle / 2;      // 沒有夠格的目標就別動：推過去會被小兵解掉
+
+    // 鐵律（Lynch：「炸彈留給大子」）：沒有證據顯示對面夠大，就不准引爆。
+    // 原本只有加分沒有禁止，量出來 74.6% 的引爆換不到軍長以上，
+    // 而且最常炸到的是**地雷**（568 次裡 104 次）——拿全隊只有兩顆的炸彈
+    // 去炸一顆不會動的地雷，純虧。其次是工兵 43、排長 22。
+    // 例外：對面是已顯露的軍旗（那是直接獲勝），或自家軍旗命在旦夕（沒有明天了）。
+    if (enemyTarget) {
+      const 是軍旗 = revealedFlagNodes(game, s2 => TEAM_OF(s2) !== TEAM_OF(seat)).some(f => f.id === to);
+
+      // Lynch：「炸彈不會主動撞不動的東西。除非沒工兵，不然不可能拿炸彈撞地雷。」
+      // 關鍵在於 bigThreat 在地雷格上一樣會累積——師長撞死在那裡，AI 就以為
+      // 「那顆很大，值得炸」，但那其實是地雷。兩者用公開資訊分得開：
+      // 地雷在後兩排、而且從來沒動過；會動的大子不會有這個特徵。
+      let 我還有工兵 = false;
+      for (const [, o] of game.at) if (o.seat === seat && o.piece === '工兵') 我還有工兵 = true;
+      const 可能是地雷 = isBackRow(to) && !memory.moved?.has(to);
+      if (可能是地雷 && 我還有工兵 && !是軍旗) return -Infinity;
+
+      const 夠大 = bigThreat >= 7;
+      if (!夠大 && !是軍旗 && !flagInPeril(game, seat, memory)) return -Infinity;
+    }
   }
 
   // ── 心法：隊友動了主力，就過去幫忙擋 ──
@@ -544,6 +581,14 @@ export function scoreMove(game, seat, memory, { from, to }) {
       const doomed = flagInPeril(game, seat, memory);
       const cheapness = doomed ? 1 : (rank > 0 ? Math.max(0.1, 1 - rank / 10) : 0.5);
       score += w.hqRush * cheapness * (doomed ? 3 : 1);
+
+      // 只剩最後一家敵人時，踏進「還沒被排除」的大本營是**五五波直接獲勝**。
+      // 原本只給 hqRush×便宜程度，大子只拿到 4 分，於是它常常改去走一步沒事的棋——
+      // 量出來 49 次放棄裡有 47 次是「只是移動」（Lynch：「可以踏進去就該接近 100%」）。
+      // 一步獲勝的期望值是半場棋，估值要壓過怕死。
+      const 只剩一家 = [0, 1, 2, 3].filter(x =>
+        TEAM_OF(x) !== TEAM_OF(seat) && !game.eliminated.has(x)).length === 1;
+      if (只剩一家) score += w.finalFlagGamble;
     }
   }
 
@@ -563,7 +608,7 @@ export function scoreMove(game, seat, memory, { from, to }) {
         const adjacent = [`P${seat}-r5c${fc}`, `P${seat}-r6c${fc - 1}`, `P${seat}-r6c${fc + 1}`]
           .filter(id => /c[1-5]$/.test(id));
         const enemyCanReach = (node) => [...game.at].some(([id, o]) =>
-          TEAM_OF(o.seat) !== TEAM_OF(seat) && PIECES[o.piece]?.movable && dist(id, node) <= 3.5);
+          TEAM_OF(o.seat) !== TEAM_OF(seat) && mightMove(game, id, o) && dist(id, node) <= 3.5);
         if (shoulders.includes(to) && !game.at.has(to) && enemyCanReach(to)) score += w.plugBreach;
         else if (adjacent.includes(to) && !game.at.has(to) && enemyCanReach(to)) score += w.plugBreach * 0.7;
       }
@@ -591,7 +636,7 @@ export function scoreMove(game, seat, memory, { from, to }) {
   if (/r[56]c/.test(from) && from.startsWith(`P${seat}-`) && piece !== '炸彈') {
     const myHQs = [`P${seat}-r6c2`, `P${seat}-r6c4`];
     const hqUnderThreat = [...game.at].some(([id, o]) =>
-      TEAM_OF(o.seat) !== TEAM_OF(seat) && PIECES[o.piece]?.movable &&
+      TEAM_OF(o.seat) !== TEAM_OF(seat) && mightMove(game, id, o) &&
       Math.min(...myHQs.map(h => dist(id, h))) <= 2.5);
     const bigAtRisk = [...(memory.myExposed ?? [])].some(id =>
       game.at.has(id) && neighbours(id).some(n => {
@@ -639,6 +684,25 @@ export function scoreMove(game, seat, memory, { from, to }) {
   if (kindOf(to) === 'center' || kindOf(to) === 'camp') score += w.keyNode;
 
   // ── 行營：搶著佔，但不要為了吃人把裡面的子叫出來 ──
+  // ── 開局：前五步先把棋子走進行營（Lynch）─────────────────────
+  // 行營是安全區，吃不到裡面的子。早早佔住＝白拿五個據點，而且逼對方繞路。
+  // 但**不准動後兩排的子**——那些子在守家，而且一動就等於自曝不是地雷。
+  const myMoveCount = Math.floor((game.plies ?? 0) / 4);
+  if (myMoveCount < 5 && kindOf(to) === 'camp' && to.startsWith(`P${seat}-`)
+      && !/r[56]c/.test(from)) score += w.openingCamp;
+
+  // ── 軍旗前面的行營＝超級重要的據點（Lynch）──────────────────
+  // r4c2 / r4c4 正對著兩個大本營。敵人一旦站上去，防守會變極難：
+  // 後兩排要「假裝是地雷」不能亂動，而站上來的可能是工兵、也可能是大子，無從判斷。
+  // 空著的行營就是給對方的踏板，所以一空出來要立刻補位。
+  const frontCamps = [`P${seat}-r4c2`, `P${seat}-r4c4`];
+  const mateSeat2 = [0, 1, 2, 3].find(x => x !== seat && TEAM_OF(x) === TEAM_OF(seat));
+  const mateFrontCamps = mateSeat2 == null ? [] : [`P${mateSeat2}-r4c2`, `P${mateSeat2}-r4c4`];
+  if (frontCamps.includes(to)) score += w.frontCampHold;
+  else if (mateFrontCamps.includes(to)) score += w.frontCampHold * 0.5;   // 隊友門前也該幫忙補
+  // 守在門前的子不要隨便離開——除非是去吃人
+  if (frontCamps.includes(from) && !enemyTarget) score -= w.frontCampLeave;
+
   if (kindOf(to) === 'camp') {
     score += w.camp + rank * 0.15;
     // Lynch：「我佔領行營只有一個選擇，不可能移動後兩排去佔領，一定是動連長。」
@@ -652,6 +716,14 @@ export function scoreMove(game, seat, memory, { from, to }) {
     // 自家或隊友陣地裡的行營被敵人佔走非常慘，敵人一靠近就要搶先坐進去
     const home = to.startsWith(`P${seat}-`) || to.startsWith(`P${mateSeat}-`);
     if (home && enemyNear) score += w.campHome;
+
+    // Lynch：「如果對方一開場吃我左上，我應該立刻站左上行營，**不是去吃他**。
+    //   因為吃他之後，他會站走我行營——那他就吃我兩子還佔行營，我也炸不到他，
+    //   他還可以隨時出來吃不是炸彈的人！」
+    // 所以「剛在旁邊折損棋子」本身就是佔這個行營的訊號，而且要壓過報仇。
+    const justLostNearby = neighbours(to).some(n =>
+      (memory.ply ?? 0) - (memory.lastLostPly?.get(n) ?? -999) <= 3);
+    if (home && justLostNearby) score += w.campAfterLoss;
   }
   if (kindOf(from) === 'camp') {
     score -= w.campLeave;               // 行營被佔很慘，離開要有理由
@@ -723,7 +795,21 @@ export function scoreMove(game, seat, memory, { from, to }) {
   // 敵方後兩排是地雷的家。人類的直覺是「不要沒測過就伸手進去」，
   // 但實測發現任何形式的迴避都讓 AI 大幅變弱（勝率 67%→25~51%）——因為軍旗就住在後兩排，
   // 不進去就永遠贏不了。所以改成鼓勵用小兵去試，而不是懲罰大子進去。
-  const untestedBackRow = isBackRow(to) && !memory.weakKnown?.has(to) && deadly === 0 && bigThreat === 0;
+  // 探後兩排要有探的價值：那格站的必須是「這塊陣地自己家的棋子」。
+  // 站著別家的闖入者時，顏色一望即知不可能是這家的地雷，探它問不出任何東西。
+  // （探路誘因拉到 160 之後這個洞才浮出來——它會去「探」一顆困死在大本營的闖入者。）
+  const 可能是這家的雷 = !target || Number(to[1]) === target.seat;
+  // Lynch：「正常人玩，不會大人撞死在地雷。一定是工兵拆過才衝。
+  //          除非是要賭，但賭不會站高比重。」
+  // 這是治因：只要大子不亂撞後兩排，bigThreat 就不會在地雷格上累積，
+  // 炸彈把地雷誤判成大子這件事也會自己消失。
+  // 用重扣分而不是全面禁止——軍旗就住在後兩排，堵死就永遠贏不了（試過，67%→25~51%）。
+  if (target && enemyTarget && rank >= 6 && isBackRow(to) && 可能是這家的雷
+      && !memory.moved?.has(to) && !memory.notMine?.has(to) && !memory.weakKnown?.has(to))
+    score -= w.bigVsUntested;
+
+  const untestedBackRow = isBackRow(to) && 可能是這家的雷
+    && !memory.weakKnown?.has(to) && deadly === 0 && bigThreat === 0;
   if (untestedBackRow && rank <= 3) score += w.backRowProbe;      // 小兵去探後兩排是划算的
 
   // ── 資訊價值：我洩漏多少、我問到多少 ──────────────────────
@@ -775,6 +861,23 @@ const FORCE_CAPTURE_AFTER = 45;
 export function chooseMove(game, seat, memory, rnd = Math.random) {
   let moves = movesForSeat(game, seat);
   if (!moves.length) return null;
+  // 鐵律（Lynch）：只剩最後一家敵人時，能踏進他家大本營就是第一順位——
+  // 那格若是軍旗就直接獲勝，是五五波。實測用加分完全推不動這件事：
+  // 把獎勵從 200 加到 100000，踏進去的比例一動也不動（82.7%），
+  // 代表卡點不在估值。所以改成在這裡直接挑走法，繞過評分。
+  // 已被排除的大本營（notFlag）與站著別家棋子的格子不算——踏進去只會白白凍死一顆子。
+  const enemiesLeft = SEATS.filter(s2 => TEAM_OF(s2) !== TEAM_OF(seat) && !game.eliminated.has(s2));
+  if (enemiesLeft.length === 1) {
+    const foe = enemiesLeft[0];
+    const hqs = [`P${foe}-r6c2`, `P${foe}-r6c4`].filter(id => {
+      if (memory.notFlag?.has(id)) return false;
+      const o = game.at.get(id);
+      return !o || o.seat === foe;
+    });
+    const shot = moves.filter(m => hqs.includes(m.to) && game.at.has(m.to));
+    if (shot.length) return shot[Math.floor(rnd() * shot.length)];
+  }
+
   if ((game.pliesSinceCapture ?? 0) >= FORCE_CAPTURE_AFTER) {
     // 只有「敵方」的棋子才算可吃。原本寫成 game.at.has(m.to)，把隊友也算了進去——
     // 那會把候選走法過濾成一堆 -Infinity 的違規走法，最後 15 步等於亂走，

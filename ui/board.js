@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=93';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=93';
-import { insignia } from './insignia.js?v=93';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=101';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=101';
+import { insignia } from './insignia.js?v=101';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -121,6 +121,13 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
     }
     if (node.kind === 'camp') shape.setAttribute('stroke', 'var(--camp-stroke)');
     layers.nodes.appendChild(shape);
+    // 每一格都要有「整格大小」的透明命中區。
+    // 少了這個，空格子只有那顆小綠點（r=7，手機上約 6px）點得到——
+    // 手指一偏就打到空白處，變成一直取消選取（Lynch 實機回報）。
+    layers.nodes.appendChild(el('rect', {
+      class: 'node-hit', 'data-node': node.id,
+      x: x - 23, y: y - 22, width: 46, height: 44, fill: 'transparent',
+    }));
   }
 
   let bottomSeat = 0;
@@ -134,9 +141,17 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   // 窄螢幕只留符號、不畫文字：手機一格約 19.8px，中文只有 6.5px，是雜訊不是資訊。
   // 斷點用「單格的實際像素」而不是視窗寬度——棋盤尺寸、平板橫拿、瀏覽器縮放
   // 都會讓視窗寬度失準，格子大小永遠正確。（規格 docs/piece-symbols-spec.md）
+  // 用遲滯（hysteresis）：小於 26 才進精簡、要大於 30 才退出。
+  // 只用單一門檻的話，棋盤大小剛好卡在邊界時會來回切換——
+  // 切換 → 版面微調 → 又觸發判斷，畫面看起來就是「一直放大縮小」（Lynch 實機回報）。
+  let compact = false;
   function syncCompact() {
     const cellPx = (svg.getBoundingClientRect().width || 0) / W * 42;
-    svg.classList.toggle('is-compact', cellPx > 0 && cellPx < 26);
+    if (!cellPx) return;
+    if (!compact && cellPx < 26) compact = true;
+    else if (compact && cellPx > 30) compact = false;
+    else return;                       // 在遲滯區間內就完全不動，避免抖動
+    svg.classList.toggle('is-compact', compact);
   }
   // 只在重畫時算不夠：手機轉橫、拉動視窗時格子大小就變了，
   // 但下一步棋之前不會重畫，文字的顯示狀態會卡在舊的。
@@ -147,7 +162,7 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   window.addEventListener('orientationchange', () => setTimeout(syncCompact, 200));
   requestAnimationFrame(syncCompact);      // 首次版面完成後再量一次
 
-  function render({ board, mySeats = [], selected = null, moves = [], revealedFlags = [], lastMove = null, hide = [], viewerSeat = 0 }) {
+  function render({ board, mySeats = [], selected = null, moves = [], revealedFlags = [], lastMove = null, recentMoves = [], hide = [], viewerSeat = 0 }) {
     syncCompact();
     layers.pieces.replaceChildren();
     layers.hints.replaceChildren();
@@ -157,25 +172,29 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
     for (const g of [layers.hints, layers.marks]) g.setAttribute('class', `${g.getAttribute('class').split(' ')[0]} ind-seat${viewerSeat}`);
     if (!board) return;
 
-    // 上一步的痕跡：讓所有人都看得出剛剛是誰、從哪走到哪
-    if (lastMove) {
-      const route = lastMove.path?.length >= 2 ? lastMove.path : [lastMove.from, lastMove.to];
+    // 對手的路徑：在你兩次出手之間，其他三家各走了一步。
+    // 只畫「最後一步」的話，你永遠看不到另外兩家做了什麼——
+    // Lynch：「大家可能會不夠時間看每個人怎麼移動，敵人路徑這個功能真的很重要。」
+    // 所以畫的是「從你上次出手到現在的每一步」，每家用自己的顏色。
+    const trailMoves = (recentMoves.length ? recentMoves : (lastMove ? [lastMove] : []));
+    for (const mv of trailMoves) {
+      const route = mv.path?.length >= 2 ? mv.path : [mv.from, mv.to];
       const d = route.map((id, i) => {
-        const p = nodeXY(id);
-        return `${i ? 'L' : 'M'} ${px(p.x)} ${py(p.y)}`;
+        const q = nodeXY(id);
+        return `${i ? 'L' : 'M'} ${px(q.x)} ${py(q.y)}`;
       }).join(' ');
       layers.hints.appendChild(el('path', {
-        class: 'last-path', d, stroke: `var(--seat-${lastMove.seat})`,
+        class: 'last-path', d, stroke: `var(--seat-${mv.seat})`,
       }));
-      const a = nodeXY(lastMove.from), b = nodeXY(lastMove.to);
+      const a = nodeXY(mv.from), b = nodeXY(mv.to);
       layers.hints.appendChild(el('circle', {
-        class: 'last-from', cx: px(a.x), cy: py(a.y), r: 13, stroke: `var(--seat-${lastMove.seat})`,
+        class: 'last-from', cx: px(a.x), cy: py(a.y), r: 13, stroke: `var(--seat-${mv.seat})`,
       }));
       layers.hints.appendChild(el('rect', {
         // 一定要跟棋子同尺寸（42×36）。原本畫成 46×40，剛走完的那顆就多出一圈，
         // 在這個靠大小判斷階級的遊戲裡等於製造假的階級訊號——Lynch 實戰誤判成「棋子長大了」。
         class: 'last-to', x: px(b.x) - 21, y: py(b.y) - 18, width: 42, height: 36, rx: 6,
-        stroke: `var(--seat-${lastMove.seat})`,
+        stroke: `var(--seat-${mv.seat})`,
       }));
     }
 
@@ -202,7 +221,8 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
       }));   // 暗棋的底色由 theme.css 依 .piece--hidden.piece--seatN 決定
       if (known) {
         const badge = insignia(occ.piece);
-        badge.setAttribute('transform', 'translate(0,-6) scale(1)');   // 新符號本身已是規格尺寸，不再放大
+        badge.setAttribute('class', 'badge');
+        badge.setAttribute('transform', 'translate(0,-6) scale(1)');   // 為下方文字留位；精簡模式會取消   // 新符號本身已是規格尺寸，不再放大
         face.appendChild(badge);
         const label = el('text', { class: 'piece-label', y: 9.5 });
         label.textContent = occ.piece;
@@ -258,7 +278,8 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
       }));
       if (piece) {
         const badge = insignia(piece);
-        badge.setAttribute('transform', 'translate(0,-6) scale(1)');   // 新符號本身已是規格尺寸，不再放大
+        badge.setAttribute('class', 'badge');
+        badge.setAttribute('transform', 'translate(0,-6) scale(1)');   // 為下方文字留位；精簡模式會取消   // 新符號本身已是規格尺寸，不再放大
         face.appendChild(badge);
         const label = el('text', { class: 'piece-label', y: 9.5 });
         label.textContent = piece;

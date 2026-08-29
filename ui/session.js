@@ -6,16 +6,16 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=93';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=93';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=101';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=101';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=93';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=93';
-import { VALUE } from '../engine/ai/lookahead.mjs?v=93';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=93';
-import { searchMove } from '../engine/ai/search.mjs?v=93';
+} from '../engine/src/room.mjs?v=101';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=101';
+import { VALUE } from '../engine/ai/lookahead.mjs?v=101';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=101';
+import { searchMove } from '../engine/ai/search.mjs?v=101';
 
 // controllers：四個座位分別由誰控制。'ai' 或玩家代號（'A'、'B'）。
 // 所有模式都只是這張表的不同填法——引擎那層本來就是用「座位→玩家」在跑的：
@@ -183,8 +183,18 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
           if (m.victim === '司令' || m.victim === '軍長') { bombBonus++; bombKills.push(m.victim); }
         }
       }
+      // 給成就用的細項
+      let minesDug = 0, bombsSpent = 0, myCommanderAlive = false;
+      for (const m of record) {
+        if (TEAM_OF(m.seat) !== team) continue;
+        if (m.piece === '工兵' && m.victim === '地雷' && m.outcome === 'defenderDead') minesDug++;
+        if (m.piece === '炸彈' && m.outcome === 'bothDead') bombsSpent++;
+      }
+      if (room.game) for (const [, o] of room.game.at)
+        if (o.seat === seat && o.piece === '司令') myCommanderAlive = true;
+
       return {
-        alive, attacks, won, traded, lost,
+        alive, attacks, won, traded, lost, minesDug, bombsSpent, myCommanderAlive,
         winRate: attacks ? won / attacks : null,
         bombBonus, bombKills,
         plies: room.game?.plies ?? 0,

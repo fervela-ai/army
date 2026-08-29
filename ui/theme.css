@@ -72,10 +72,10 @@ body {
 
 .stage { display: grid; place-items: center; min-height: 0; }
 .board { width: 100%; height: 100%; max-height: 100%;
-  /* 只擋單指拖曳（那是佈陣要用的），把**雙指縮放交還給瀏覽器**。
-     原本寫 none 會把 pinch-zoom 一起擋掉——手機單格只有 18.3px，
-     玩家連放大來看都做不到。 */
-  touch-action: pinch-zoom;
+  /* 單指平移、雙指縮放都交還給瀏覽器（manipulation 只關掉「連點兩下放大」的延遲）。
+     放大之後要能拖著看棋盤的別的地方——這需要單指平移，所以佈陣的拖曳互換
+     必須拿掉，改成純點選（Lynch 的解法）。兩者不能並存。 */
+  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent; }
 
 .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
@@ -368,7 +368,16 @@ body {
 /* 窄螢幕（單格 < 26px）：只留符號，文字拿掉並把符號置中。
    6.5px 的中文讀不出來，留著只會蓋掉符號。 */
 .board.is-compact .piece-label { display: none; }
-.board.is-compact .insignia { transform: translateY(6px); }
+/* 不顯示文字時，整個格子都是符號的——原本只把符號往下移，留白佔了三分之一，
+   在 18px 的格子上等於白白浪費解析度（Lynch：「你沒有善用這個格子，圖案還是太小」）。
+   放大到品字形三顆星剛好填滿 42×36 的格子；單顆星維持同尺寸不放大（符號規格），
+   所以單顆看起來比較空是正確的——那是「數量」的訊息。 */
+/* board.js 把符號往上偏移 6（為了在下面留文字的位置）；不顯示文字時要「剛好抵銷」
+   才會置中——補償不足就會整體偏下（Lynch 回報）。 */
+/* 精簡模式沒有文字，就把「為文字留位」的偏移整個取消（不要用 CSS 猜補償量），
+   再把符號放大到接近填滿格子。 */
+.board.is-compact .badge { transform: none; }
+.board.is-compact .insignia { transform: scale(1.35); }
 
 /* 音效試聽面板 */
 .sfxpick { display: grid; gap: 16px; width: min(88vw, 460px); }
@@ -386,3 +395,12 @@ body {
 .stats-k { color: var(--ink-soft); min-width: 6.5em; }
 .stats-v { font-weight: 700; }
 .stats-note { color: var(--ink-soft); font-size: 12px; }
+
+/* 解鎖成就 */
+.ach { margin-top: 16px; padding: 12px 14px; border-radius: 12px;
+  background: var(--hq-fill); border: 1px solid var(--rank-star); }
+.ach-title { font-weight: 700; font-size: 13px; color: var(--rank-star); margin-bottom: 6px; }
+.ach-item { display: flex; gap: 10px; align-items: baseline; font-size: 13px; margin: 3px 0; }
+.ach-name { font-weight: 700; white-space: nowrap; }
+.ach-desc { color: var(--ink-soft); font-size: 12px; }
+.ach-progress { margin-top: 8px; font-size: 12px; color: var(--ink-soft); }

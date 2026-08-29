@@ -182,8 +182,15 @@ export const VARIANTS = {
   ],
 };
 
+// Lynch 聽過所有版本後選的（2026-08-30）：移動2／吃掉2／陣亡2／爆炸1／司令2／滅家2。
+// 這是**所有人的預設**——真實玩不給大家選，試聽面板改成只有 ?debug=1 才出現。
+const DEFAULT_CHOICE = { move: 1, capture: 1, bounce: 1, explode: 0, alarm: 1, flag: 1 };
+
 const CHOICE_KEY = 'army-online:sfx';
-const loadChoice = () => { try { return JSON.parse(localStorage.getItem(CHOICE_KEY) ?? '{}'); } catch { return {}; } };
+const loadChoice = () => {
+  try { return { ...DEFAULT_CHOICE, ...JSON.parse(localStorage.getItem(CHOICE_KEY) ?? '{}') }; }
+  catch { return { ...DEFAULT_CHOICE }; }
+};
 let choice = loadChoice();
 export const getChoice = () => ({ ...choice });
 export function setVariant(event, index) {

@@ -78,6 +78,7 @@ const DEFAULT_W = {
   hang: 0.15,           // 把棋子送到人家嘴邊的扣分
   smallVsBig: 6,       // 小子不要一直去撞已知的大子
   guardMate: 3,         // 隊友的主力暴露時過去幫忙擋
+  centrePull: 4,        // 中央沒有我方棋子時，把最近的一顆拉過去（有人在就不再加分）
   engThreat: 18,        // 工兵停在敵方軍旗旁製造兩難（對方怎麼回應都洩漏資訊）
   infoLeak: 5,        // 每洩漏一 bit 的代價
   infoGain: 2.5,        // 每問出一 bit 的收益
@@ -248,6 +249,9 @@ export function noteOwnMove(memory, move) {
   if (!memory) return;
   memory.trail = [...(memory.trail ?? []), { ...move, ply: memory.ply }].slice(-8);
 }
+
+// 中央九宮的中心點。四條鐵路在這裡交會，站住這裡對四家都構得到。
+const CENTRE = 'M-r2c2';
 
 const dist = (a, b) => {
   const p = nodeXY(a), q = nodeXY(b);
@@ -697,6 +701,18 @@ export function scoreMove(game, seat, memory, { from, to }) {
   if (kindOf(to) === 'center' || kindOf(to) === 'camp') score += w.keyNode;
 
   // ── 行營：搶著佔，但不要為了吃人把裡面的子叫出來 ──
+  // ── 佔住中央（原本以為是「守隊友軍旗」，對照實驗證明不是）──────────
+  // 我原本寫成「隊友軍旗沒人守就派一顆去站崗」，混隊基準 24.7% → 31.1%。
+  // 但把錨點換成棋盤中央做對照，結果更好（34.6%）——
+  // **所以有效的不是協作，是「棋子太散，往中央站比較有用」**。
+  // 中央九宮連著四條鐵路，站在那裡對四家都構得到，也擋得住別人穿過去。
+  // 一樣只在「中央附近沒有我方棋子」時才拉人，避免全隊擠在中間。
+  // CENTRE_GATE=off：不設「已經有人在中央就不拉」的條件，做對照用
+  if (!memory.centreHeld || globalThis.process?.env?.CENTRE_GATE === 'off') {
+    const d0 = dist(from, CENTRE), d1 = dist(to, CENTRE);
+    if (d1 < d0) score += w.centrePull * Math.max(0, 1 - d1 / 14);
+  }
+
   // ── 開局：前五步先把棋子走進行營（Lynch）─────────────────────
   // 行營是安全區，吃不到裡面的子。早早佔住＝白拿五個據點，而且逼對方繞路。
   // 但**不准動後兩排的子**——那些子在守家，而且一動就等於自曝不是地雷。
@@ -904,6 +920,19 @@ export function chooseMove(game, seat, memory, rnd = Math.random) {
   // 往前看一步：走完之後，這顆棋子會不會被對方吃掉？整輪只算一次威脅圖。
   const threats = threatMap(game, seat);
   memory.threats = threats;              // 讓 scoreMove 也用得到（flagInPeril 要靠它）
+
+  // 中央附近有沒有我方棋子：整輪算一次就好。
+  // 量出來的病根：「隊友軍旗被貼住」的 146 個回合裡，AI 吃得掉那顆的只有 3%——
+  // 它不是不肯救，是根本不在場（平均離隊友軍旗 7.9 步）。
+  // 危機發生時才出發永遠來不及，所以平時就要有人在守備範圍內。
+  {
+    memory.centreHeld = false;
+    for (const [id, o] of game.at) {
+      if (TEAM_OF(o.seat) !== TEAM_OF(seat)) continue;
+      if (dist(id, CENTRE) <= 3.2) { memory.centreHeld = true; break; }
+    }
+  }
+
   // 信念表也是整輪算一次——它讓「這一格有多危險」變成具體機率，而不是全場平均。
   memory.belief = buildBelief(game, seat, memory);
   memory.selfBelief = buildSelfBelief(game, seat, memory);   // 別人眼中的我，用來算洩漏

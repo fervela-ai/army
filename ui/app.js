@@ -1,13 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=93';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=93';
-import { localSession } from './session.js?v=93';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=93';
-import { buildGuide } from './guide.js?v=93';
-import { createBoardView } from './board.js?v=93';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=93';
+import { SEATS } from '../engine/src/board.mjs?v=101';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=101';
+import { localSession } from './session.js?v=101';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=101';
+import { buildGuide } from './guide.js?v=101';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=101';
+import { createBoardView } from './board.js?v=101';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=101';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -26,6 +27,9 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
 // 不再自己抱著整個房間——AI 之後要搬到伺服器，這裡就只換成 remoteSession。
 let session = null, selected = null, moves = [], logLines = [], setupSeat = 0, ticker = null;
 let myLayout = {}, busy = false, viewSeatOverride = null, lastMove = null;
+// 從「你上次出手」到現在，其他家走過的每一步。你一出手就清空重新累積。
+// 只留最後一步的話，三家在你兩次出手之間各走一步，你只看得到最後那家做了什麼。
+let recentMoves = [];
 let drawAskedAt = -1;                 // 上次問過「要不要和局」是第幾手，避免一直跳視窗
 // S = 最近一次的快照。refresh() 是同步的，所以畫面永遠畫 S，由 sync() 負責更新它。
 let S = { status: 'setup', turn: null, plies: 0, setupDeadline: 0, readySeats: new Set(),
@@ -117,7 +121,7 @@ async function newGame() {
   setupSeat = mySetupSeats()[0] ?? 0;
   myLayout = await session.layout(0);
   selected = null; moves = []; logLines = []; busy = false; viewSeatOverride = null;
-  resultShown = false; lastMove = null; drawAskedAt = -1; els.overlay.hidden = true;
+  resultShown = false; lastMove = null; recentMoves = []; drawAskedAt = -1; els.overlay.hidden = true;
 
   hint('');
   addLog({
@@ -193,10 +197,11 @@ async function onSetupClick(id) {
     hint(selected ? '這裡不能換，選取還留著' : '只能排自己的陣地', true);
     return;
   }
-  // 同一顆再按一次不取消選取。使用者沒看到反應時會直覺再按一下，
-  // 如果第二下把選取取消掉，感覺就是「按了三四次才有反應」。取消請按空白處或 Esc。
-  if (selected === id) { hint('已選取，點另一顆交換'); return; }
-  if (!selected) { selected = id; hint('再點另一顆棋子交換位置'); SFX.select(); await sync(); return; }
+  // 點同一顆＝取消選取（Lynch 指定）。
+  // 註：早期為了修「按了沒反應」曾經改成「再按一次不取消」，但那是 click 事件掉按鍵造成的；
+  // 改用 pointerdown 之後反應是即時的，取消就該照直覺走。
+  if (selected === id) { selected = null; hint('已取消選取'); sync(); return; }
+  if (!selected) { selected = id; hint('再點另一顆交換位置，點同一顆取消'); SFX.select(); await sync(); return; }
   if (await trySwap(selected, id)) selected = null;    // 換失敗時保留選取，方便直接改點別顆
   await sync();
 }
@@ -272,6 +277,9 @@ async function doMove(seat, from, to) {
   (SFX_BY_OUTCOME[move.outcome] ?? null)?.();
 
   lastMove = { from, to, seat, path };                       // 留下痕跡，讓大家看清楚誰動了什麼
+  // 你自己出手＝把上一輪的痕跡清掉，重新累積這一輪其他家的走法
+  if (seat === 0) recentMoves = [lastMove];
+  else recentMoves = [...recentMoves.filter(m => m.seat !== seat), lastMove].slice(-4);
   // 棋譜含實際身分（連線層才知道），事後才分析得出「這一步好不好」
   try {
     const rec = await session.record();
@@ -383,9 +391,10 @@ const view = createBoardView(els.board, {
     const from = pressedOn;
     pressedOn = null;
     if (!from || from === id) return;                  // 原地放開＝單純點一下，前面已經處理過
-    if (S.status === 'setup') {                        // 拖拉互換
-      if (!id.startsWith(`P${setupSeat}-`) || !myLayout[id]) return;
-      trySwap(from, id).then(ok => { if (ok) selected = null; return sync(); });
+    // 佈陣不再支援拖曳互換：拖曳需要獨占單指手勢，那樣手機放大後就無法平移棋盤。
+    // 改成純點選——點一顆亮起來，再點一顆交換，點同一顆取消（Lynch 的解法）。
+    if (S.status === 'setup') {
+      return;
     } else if (S.status === 'playing' && moves.includes(id)) {
       onPlayClick(id);                                 // 對戰時也可以直接把棋子拖到目標
     }
@@ -408,7 +417,8 @@ function refresh() {
   view.render({
     board, mySeats: inSetup ? [setupSeat] : [seat],
     selected, moves, revealedFlags: board?.revealedFlags ?? [],
-    lastMove: inSetup ? null : lastMove, viewerSeat: seat,
+    lastMove: inSetup ? null : lastMove,
+    recentMoves: inSetup ? [] : recentMoves, viewerSeat: seat,
   });
 
   if (inSetup) {
@@ -547,10 +557,41 @@ async function showStats() {
   if (st.bombBonus) {
     ul.append(row('炸彈獎勵', `＋${st.bombBonus}`, `炸掉${st.bombKills.join('、')}——全場最划算的一擊`));
   }
+  if (st.minesDug) ul.append(row('工兵拆雷', `${st.minesDug} 顆`));
   const h = document.createElement('div');
   h.className = 'stats-title';
   h.textContent = '本局統計';
   box.append(h, ul);
+
+  // 新解鎖的成就：只跳沒拿過的，拿過的第二次就沒有感覺了
+  const fresh = checkAchievements(st, { win: S.result?.type === 'win' && S.result.team === 0 });
+  if (fresh.length) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ach';
+    const t = document.createElement('div');
+    t.className = 'ach-title';
+    t.textContent = fresh.length > 1 ? `解鎖 ${fresh.length} 項成就` : '解鎖成就';
+    wrap.append(t);
+    for (const a of fresh) {
+      const li = document.createElement('div');
+      li.className = 'ach-item';
+      const n = document.createElement('span');
+      n.className = 'ach-name';
+      n.textContent = a.name;
+      const d = document.createElement('span');
+      d.className = 'ach-desc';
+      d.textContent = a.desc;
+      li.append(n, d);
+      wrap.append(li);
+    }
+    const done = unlockedIds().length;
+    const p2 = document.createElement('div');
+    p2.className = 'ach-progress';
+    p2.textContent = `已解鎖 ${done} / ${ACHIEVEMENTS.length}`;
+    wrap.append(p2);
+    box.append(wrap);
+    SFX.victory();
+  }
 }
 
 // 把整局棋譜存起來（含開局佈陣與每一步），最多留 10 局。
@@ -761,6 +802,7 @@ els.btnOtherSeat.addEventListener('click', async () => {
 if (new URLSearchParams(location.search).has('debug')) {
   els.debugTools.hidden = false;
   els.modeTools.hidden = false;
+  els.sfx.hidden = false;
 }
 
 // 規則說明：新手是「打開就想玩」，願意先讀一頁規則的很少，

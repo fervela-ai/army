@@ -231,3 +231,22 @@ body {
   border-color: transparent;
   color: #fff;
 }
+
+/* 新手指南 */
+.guide { display: grid; gap: 12px; width: min(70vw, 620px); }
+.guide-tabs { display: flex; gap: 6px; }
+/* 用較高的選擇器特異度，否則 .btn 自己的 color 會蓋過來，選中的分頁會變成一塊黑色 */
+.guide-tabs .guide-tab.is-on {
+  background: var(--ink);
+  color: var(--panel-bg);       /* 不是 --surface：那個變數不存在，字色會回退成跟背景同色 */
+  border-color: var(--ink);
+}
+.guide-body { max-height: min(60vh, 460px); overflow-y: auto; line-height: 1.75; font-size: 14px; }
+.guide-body h3 { font-size: 15px; margin: 18px 0 6px; }
+.guide-body h3:first-child { margin-top: 0; }
+.guide-body p { margin: 6px 0; }
+.guide-body ul, .guide-body ol { margin: 6px 0; padding-left: 22px; }
+.guide-body li { margin: 3px 0; }
+.guide-body b { color: var(--ink); }
+.guide-body { color: var(--ink); }
+.g-rank { font-weight: 600; letter-spacing: .04em; }

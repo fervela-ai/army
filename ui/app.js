@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=147';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=147';
-import { localSession } from './session.js?v=147';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=147';
-import { buildGuide } from './guide.js?v=147';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=147';
-import { createBoardView } from './board.js?v=147';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=147';
+import { SEATS } from '../engine/src/board.mjs?v=149';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=149';
+import { localSession } from './session.js?v=149';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=149';
+import { buildGuide } from './guide.js?v=149';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=149';
+import { createBoardView } from './board.js?v=149';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=149';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,7 +24,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=147），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=149），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -864,11 +864,20 @@ if (new URLSearchParams(location.search).has('debug')) {
 // 規則說明：新手是「打開就想玩」，願意先讀一頁規則的很少，
 // 所以放在按得到的地方，卡住時才會去看。
 function openGuide() {
+  // 教學的「上一步／下一步」搬到跟「開始玩」同一排。切到別的分頁時那一排會消失，
+  // 切回來再放回去（每次 show() 都會回報現在這頁有沒有導覽列）。
+  const place = (bar) => {
+    els.modalActions.querySelector('.demo-bar')?.remove();
+    if (bar) els.modalActions.prepend(bar);
+  };
+  let bar = null;
+  const body = buildGuide({ onNav: (b) => { bar = b; place(b); } });
   showModal({
     title: '四國軍棋　新手指南',
-    body: buildGuide(),
+    body,
     actions: [{ label: '開始玩', primary: true, onClick: closeModal }],
   });
+  place(bar);            // showModal 會重建動作列，所以要再放一次
 }
 els.guide.addEventListener('click', openGuide);
 

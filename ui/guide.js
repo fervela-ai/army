@@ -2,7 +2,7 @@
 //
 // 為什麼做在遊戲裡而不是另開網頁：新玩家是「打開就想玩」，
 // 願意先去讀一頁規則的人很少。放在按得到的地方，卡住時才會去看。
-import { buildBasicsTour } from './guide-demo.js?v=147';
+import { buildBasicsTour } from './guide-demo.js?v=149';
 
 const SECTIONS = [
   {
@@ -98,7 +98,10 @@ const SECTIONS = [
   },
 ];
 
-export function buildGuide() {
+// onNav：把這一頁的「上一步／下一步」交給外面，讓它跟「開始玩」放同一排
+// （Lynch：「為什麼上下一步不能跟開始玩放同一排？」）。放同一排也省掉一整列高度，
+// 在 App 內建瀏覽器那種矮視窗特別有感。
+export function buildGuide({ onNav = () => {} } = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'guide';
   const tabs = document.createElement('div');
@@ -111,6 +114,7 @@ export function buildGuide() {
     else body.innerHTML = SECTIONS[i].html;
     [...tabs.children].forEach((b, j) => b.classList.toggle('is-on', i === j));
     body.scrollTop = 0;
+    onNav(body.querySelector('.demo-bar') ?? null);
   };
   SECTIONS.forEach((s, i) => {
     const b = document.createElement('button');

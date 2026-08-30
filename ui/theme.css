@@ -308,7 +308,9 @@ body {
 .demo { display: grid; gap: 10px; justify-items: center; }
 /* 裁切後是「直的」（一家的陣地高大於寬），所以要用高度限制，
    用寬度限制會超出視窗被切掉——軍旗在最下面那排，切掉就整段白講。 */
-.demo-board { max-height: 48vh; max-width: 100%; width: auto; height: auto; }
+/* 寬度吃滿、高度封頂：走子示範的鏡頭是橫的（鐵路橫跨整盤），
+   只用高度限制會讓它縮在中間看不清楚；佈陣示範是直的，仍然由 max-height 收住。 */
+.demo-board { width: 100%; max-height: 52vh; height: auto; }
 .demo-box { fill: var(--node-fill); stroke: var(--seat-0); stroke-width: 2; }
 .demo-hq { fill: var(--hq-fill); stroke: var(--seat-0); stroke-width: 2.4; }
 .demo-camp { fill: none; stroke: var(--camp-stroke); stroke-width: 3; }

@@ -3,8 +3,8 @@
 // ⚠ 用的是**遊戲真正的棋盤元件**（createBoardView），不是另外手繪的示意圖——
 // Lynch：「這不是我們的圖，我要真的我們的圖」「大本營形狀錯的」。
 // 手繪版的大本營形狀跟實際盤面對不上，教錯了比不教更糟。
-import { createBoardView } from './board.js?v=105';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=105';
+import { createBoardView } from './board.js?v=107';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=107';
 
 const board0 = () => {
   const at = {};

@@ -3,10 +3,10 @@
 // ⚠ 全部用遊戲真正的畫法產生，不再手繪示意圖——
 // Lynch：「這不是我們的圖，我要真的我們的圖」「大本營形狀錯的」。
 // 棋子用 insignia() ＋ 跟棋盤同一組 CSS class；棋盤地形直接把真棋盤裁一塊出來。
-import { insignia } from './insignia.js?v=105';
-import { createBoardView } from './board.js?v=105';
-import { BOARD } from '../engine/src/board.mjs?v=105';
-import { nodeXY } from '../engine/src/geometry.mjs?v=105';
+import { insignia } from './insignia.js?v=107';
+import { createBoardView } from './board.js?v=107';
+import { BOARD } from '../engine/src/board.mjs?v=107';
+import { nodeXY } from '../engine/src/geometry.mjs?v=107';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}, kids = []) => {

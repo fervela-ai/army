@@ -54,6 +54,13 @@ const DEFAULT_W = {
   bombBig: 22,          // 炸彈換軍長以上
   bombMid: 20,          // 炸彈換師長級
   bombIdle: 12,
+  // ⚠ 暫時關閉（設 0）。Lynch 的心法是「1 去吃已證明不是炸彈的子，穩賺；
+  //   風險是被猜出是 1，但那也表示可以把對方炸彈引出來」——
+  //   報酬在「引出炸彈之後把它拆掉」，而我們還沒有那個能力，
+  //   所以只承擔風險沒拿到報酬：拆開實測，這半條讓對打從 49.1% 掉到 41.1%。
+  //   等欺敵／主動拆炸彈那層做出來再打開。
+  commanderFeast: 0,
+  commanderVsFresh: 24, // 但不要拿司令去碰剛動過的新子——那最可能是炸彈
   topKill: 22,          // 敵方 1 已死時，用 2 去吃「確定不是 B」的子（Lynch：鐵賺）
   keepCommander: 14,    // 同一情況下，面對「未知」的子讓 2 先上（1 死了會亮軍旗）
   commanderShare: 0.6,  // 但確定不是 B 的子 1 也該吃，只是權重比 2 低（Lynch）
@@ -88,6 +95,7 @@ const DEFAULT_W = {
   engConfirmsFlag: 12,  // 用自己的工兵去解，等於承認那裡是軍旗
   backRowStay: 14,      // 後兩排非必要不准動——一動就等於宣告「我不是地雷」
   blockMate: 7,         // 停在隊友陣地的主幹道上會擋住他出兵
+  campFromRow1: 30,     // 用第一排的子佔行營＝告訴對方「這裡沒有炸彈」（Lynch）
   campFromBack: 8,      // 用後兩排的棋子去佔行營要扣分（那些子在守家）
   campAfterLoss: 45,    // 自家行營旁邊剛折損棋子＝立刻去坐進去，別去報仇（Lynch）
   openingCamp: 16,      // 開局搶行營。順序靠 CAMP_PRIORITY 的比例決定，不是靠加大總分      // 開局前五步先佔行營（Lynch），後兩排的子不算
@@ -748,8 +756,15 @@ export function scoreMove(game, seat, memory, { from, to }) {
     ? { r2c2: 1, r2c4: 1, r4c2: 1, r4c4: 1, r3c3: 0.3 }
     : { r2c2: 1, r2c4: 1, r4c2: 0.15, r4c4: 0.15, r3c3: 0.05 };
   const campKey = to.startsWith(`P${seat}-`) ? to.slice(to.indexOf('-') + 1) : null;
-  if (opening && kindOf(to) === 'camp' && campKey && !/r[56]c/.test(from))
-    score += w.openingCamp * (CAMP_PRIORITY[campKey] ?? 0.2);
+  // ⚠ 不能用第一排的棋子去佔行營（Lynch）：**炸彈不能放第一排**，
+  // 所以從 r1 走進行營的那顆一定不是炸彈——對方立刻知道這個行營沒有炸彈威脅，
+  // 大子就敢在附近亂吃。行營的價值有一半來自「對方不知道裡面是什麼」，
+  // 用第一排的子去佔，等於自己把那份價值丟掉。
+  const fromRow1 = /-r1c/.test(from) && from.startsWith(`P${seat}-`);
+  if (opening && kindOf(to) === 'camp' && campKey && !/r[56]c/.test(from)) {
+    if (fromRow1) score -= w.campFromRow1;
+    else score += w.openingCamp * (CAMP_PRIORITY[campKey] ?? 0.2);
+  }
 
   // ── 軍旗前面的行營＝超級重要的據點（Lynch）──────────────────
   // r4c2 / r4c4 正對著兩個大本營。敵人一旦站上去，防守會變極難：
@@ -823,6 +838,19 @@ export function scoreMove(game, seat, memory, { from, to }) {
 
   // 已經曝光的弱子（拆過地雷的必定是工兵）＝免費的一顆，誰去吃都賺
   if (memory.weakKnown?.has(to)) score += w.weakKnown;
+
+  // ── 司令（和軍長）該怎麼用（Lynch）────────────────────────
+  // 「其實這樣亂走是好的，因為會吃掉很多子。但要注意新子，不要 1 先吃。
+  //   1 要吃任意有吃贏別人的子——反正一定不是炸彈，吃了會贏。
+  //   風險是會被猜出來是 1，但也表示很多炸彈可以被你引出來。」
+  // notBomb 是硬推論：炸彈碰到誰都同歸於盡，所以「吃掉別人還活著」的一定不是炸彈。
+  // 對司令來說那就是穩賺的一顆——它比誰都大，唯一怕的只有炸彈和地雷。
+  if (enemyTarget && (piece === '司令' || piece === '軍長') && memory.notBomb?.has(to))
+    score += w.commanderFeast;
+  // 反過來：剛動過的「新子」最可能是衝著大子來的炸彈，司令不要先去碰。
+  const freshTarget = (memory.ply ?? 0) - (memory.lastMovedPly?.get(to) ?? -999) <= 3;
+  if (enemyTarget && piece === '司令' && freshTarget && !memory.notBomb?.has(to))
+    score -= w.commanderVsFresh;
 
   // ── 敵方司令已死之後的打法（Lynch 心法）────────────────────
   // 司令陣亡會強制亮出該家軍旗，所以「敵方 1 已死」是公開資訊，可以放心使用。

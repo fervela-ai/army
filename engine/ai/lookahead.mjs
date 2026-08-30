@@ -67,17 +67,22 @@ export function pLoseAgainstUnknown(myPiece) {
 // 等於 AI 免費知道哪些敵子是地雷。真人得自己提心吊膽，AI 不該有這個特權。
 // 公開可知的不能動只有兩種：大本營裡的棋子（規則明訂只進不出，格子位置公開），
 // 以及已經顯露的軍旗。其餘一律當成「可能會動」。
-export function mightMove(game, id, o) {
+// memory 傳進來時，會多用一個**公開推論**：後兩排、從沒動過、又殺過人的格子
+// 幾乎一定是地雷，而地雷不會動——它不該對四周投射威脅。
+// （Lynch：「地雷不會動，吃人也不要怕，分數不能這樣算。」）
+// 這不是偷看：這些條件全部來自公開事件，人也是這樣推的。
+export function mightMove(game, id, o, memory = null) {
+  if (memory?.mineSuspect?.has(id)) return false;
   if (BOARD.nodes.get(id)?.kind === 'hq') return false;        // 大本營裡的棋子不能再動
   if (game.revealedFlags?.has(o.seat) && o.piece === '軍旗') return false;  // 已公開的軍旗
   return true;
 }
 
-export function threatMap(game, seat) {
+export function threatMap(game, seat, memory = null) {
   const map = new Map();                               // 格子 → 威脅它的敵方棋子數
   for (const [id, o] of game.at) {
     if (TEAM_OF(o.seat) === TEAM_OF(seat)) continue;
-    if (!mightMove(game, id, o)) continue;
+    if (!mightMove(game, id, o, memory)) continue;
     for (const to of legalMoves(game, id)) map.set(to, (map.get(to) ?? 0) + 1);
   }
   return map;

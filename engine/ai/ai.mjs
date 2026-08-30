@@ -50,8 +50,7 @@ const DEFAULT_W = {
   engIdleLate: 6,       // 殘局解禁
   engReveal: 12,        // 走出普通棋子做不到的彎＝自報身分
   engProbe: 6,
-  engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）
-  engDigRevealed: 45,   // 軍旗已顯露時，拆旗前那顆——那是通往勝利的唯一障礙          // 去測疑似地雷（會再乘上地雷機率）
+  engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
   bombBig: 22,          // 炸彈換軍長以上
   bombMid: 20,          // 炸彈換師長級
   bombIdle: 12,
@@ -99,6 +98,7 @@ const DEFAULT_W = {
   defendPull: 9,        // 有敵人逼近自家軍旗時，把棋子拉回去攔截
   defendKill: 25,       // 吃掉正在逼近軍旗的敵人
   hqRush: 40,           // 敵方大本營沒動過的那顆有一半機率是軍旗，值得衝
+  flagSetup: 120,       // 走完這步，下一手就能扛已顯露的軍旗（前瞻一步）
   finalFlagGamble: 200, // 只剩一家敵人時，踏進未排除的大本營＝五五波直接贏，要壓過一切
   frozenIntruder: 45,   // 別花手去吃「困在大本營裡」的敵子——它已經不能動了
   deathSquare: 18,      // 那一格剛吞掉我方棋子，別急著再送一顆過去
@@ -445,6 +445,18 @@ export function scoreMove(game, seat, memory, { from, to }) {
   // ── 搶旗與守旗（軍旗顯露是公開資訊）──
   for (const flag of revealedFlagNodes(game, s => TEAM_OF(s) !== TEAM_OF(seat))) {
     if (to === flag.id) return Infinity;                   // 鐵律：一步扛旗＝直接獲勝，沒有任何理由不下
+    // 前瞻一步：走完這步之後，下一手能不能直接扛旗？
+    // Lynch 實戰 260830-SFV：敵方「兩步內可扛旗」的機會出現 10 次（第 171 手就有了），
+    // 卻拖到第 222 手才動手——因為原本只認「這一手就能扛」，看不到「兩步變一步」。
+    if (!game.at.has(to) || enemyTarget) {
+      const moved = game.at.get(from);
+      const occ = game.at.get(to);
+      game.at.delete(from); game.at.set(to, moved);
+      let setsUp = false;
+      try { setsUp = legalMoves(game, to).includes(flag.id); } catch { setsUp = false; }
+      game.at.delete(to); if (occ) game.at.set(to, occ); game.at.set(from, moved);
+      if (setsUp) score += w.flagSetup;
+    }
     score += Math.max(0, 14 - dist(to, flag.id)) * w.flagRush;
   }
   // 守旗：自己的軍旗要守，隊友的軍旗也要守——隊友見死不救的話，這隊等於只有一個人在打
@@ -481,13 +493,6 @@ export function scoreMove(game, seat, memory, { from, to }) {
     if (!有理由 && !(走法像普通棋子 && 待在自家)) return -Infinity;
 
     if (拆地雷) score += w.engProbe * Math.max(0.5, minePrior(to)) + 14;
-
-    // Lynch：「對方軍旗早就現身了，軍旗前的地雷測試要權重拉很高。」
-    // 軍旗一旦顯露，位置就是確定的，擋在它前面的東西也就從「可能有價值」變成
-    // 「唯一的障礙」——這時候拆雷不再是探路，是直接通往勝利的一步。
-    for (const flag of revealedFlagNodes(game, s2 => TEAM_OF(s2) !== TEAM_OF(seat))) {
-      if (dist(to, flag.id) <= 1.5 && !memory.moved?.has(to)) score += w.engDigRevealed;
-    }
     // 工兵停在敵方軍旗旁不只是為了拆雷，更是威嚇（Lynch）：
     // 對方動後兩排來擋＝告訴我那顆不是地雷；不能吃我＝我直接賭贏；
     // 飛自己的工兵來解＝等於承認這裡是軍旗。怎麼回應都洩漏資訊。
@@ -525,8 +530,12 @@ export function scoreMove(game, seat, memory, { from, to }) {
         && !enemyTarget) score -= w.bombInCamp;
     // 全隊只有兩顆炸彈，至少要換到司令或軍長才划算。
     // bigThreat 記的是「我方多大的子死在那格」——我的軍長(8)死在那，對方至少是軍長。
-    if (enemyTarget && bigThreat >= 8) score += w.bombBig;        // 確認至少是軍長：值得換
-    else if (enemyTarget && bigThreat >= 7) score += w.bombMid;   // 師長級也值得換——Lynch：師長+炸彈換司令軍長很划算   // 至少是師長：可以考慮
+    // Lynch：「死了 3、4 就想辦法炸掉他，大加分。」「不會使用炸彈，讓我的總司令為所欲為。」
+    // 實戰數據：他的司令出擊 13 次吃掉 12 顆、零陣亡——因為沒有人炸它。
+    // 那一格吃掉我方越多、越大的子，就越該用炸彈換掉。
+    const rampage = memory.deadly?.get(to) ?? 0;             // 那一格吞掉我方幾顆
+    if (enemyTarget && bigThreat >= 8) score += w.bombBig + rampage * 6;   // 至少軍長：值得換
+    else if (enemyTarget && bigThreat >= 6) score += w.bombMid + rampage * 6;  // 旅長以上就該炸（Lynch）   // 師長級也值得換——Lynch：師長+炸彈換司令軍長很划算   // 至少是師長：可以考慮
     // 空炸：自己沒死大子，但隊友折損了，這時賭一把也是一種打法。
     // Lynch：「缺點是會炸錯裝大子的，優點是沒損失師長就炸掉司令很賺。
     //         保守不會連贏，要可以出其不意。」所以給它一個機會，但不常做。
@@ -556,7 +565,7 @@ export function scoreMove(game, seat, memory, { from, to }) {
       const 可能是地雷 = isBackRow(to) && !memory.moved?.has(to);
       if (可能是地雷 && 我還有工兵 && !是軍旗) return -Infinity;
 
-      const 夠大 = bigThreat >= 7;
+      const 夠大 = bigThreat >= 6;      // 旅長級就算夠大（Lynch 指定，原本設 7 太嚴）
       if (!夠大 && !是軍旗 && !flagInPeril(game, seat, memory)) return -Infinity;
     }
   }
@@ -817,6 +826,19 @@ export function scoreMove(game, seat, memory, { from, to }) {
   const justLost = sinceLost <= 2;
   if (justLost && piece !== '炸彈' && !memory.weakKnown?.has(to)) score -= w.noRevenge;
 
+  // 鐵律（Lynch）：「不要亂出子吃地雷就不會這樣了。」
+  // 已經推定是地雷的格子（後兩排、從沒動過、殺過人），除了工兵誰都不准去撞——
+  // 撞了必死，而且死了還會讓那一帶在自己眼裡變成危險區，連帶不敢靠近。
+  if (target && enemyTarget && suspectMine && piece !== '工兵') return -Infinity;
+
+  // 鐵律（Lynch）：「你怎麼知道死掉那顆，對方多大？要去吃第二次一定要更大。」
+  // ⚠ 但「大一階」是錯的實作：死了 6 之後依序送 5、4、3、2 才同歸於盡，
+  //    那是階梯式送死。Lynch 的原意是「**6 死了就直接派 1**，不然就別去」。
+  //    所以只允許兩種：我方目前最大的那一階，或明顯高出兩階以上。
+  if (target && enemyTarget && rank > 0 && bigThreat >= rank
+      && piece !== '工兵' && piece !== '炸彈'
+      && rank !== (memory.myTopRank ?? 0) && rank < bigThreat + 2) return -Infinity;
+
   if (deadly > 0) {
     if (piece === '工兵' || piece === '炸彈') return score;
     // 心法：小子的功用是「測未知」，不是拿去撞已經知道很大的子。
@@ -926,8 +948,12 @@ export function chooseMove(game, seat, memory, rnd = Math.random) {
     if (captures.length) moves = captures;
   }
   // 往前看一步：走完之後，這顆棋子會不會被對方吃掉？整輪只算一次威脅圖。
-  const threats = threatMap(game, seat);
-  memory.threats = threats;              // 讓 scoreMove 也用得到（flagInPeril 要靠它）
+  const threats = threatMap(game, seat, memory);   // 疑似地雷不算威脅（它不會動）
+  memory.threats = threats;
+  // 我方還活著的最大階級：那一格已經吃掉我一顆時，只有「派最大的」才有意義
+  memory.myTopRank = 0;
+  for (const [, o] of game.at)
+    if (o.seat === seat) memory.myTopRank = Math.max(memory.myTopRank, PIECES[o.piece]?.rank ?? 0);              // 讓 scoreMove 也用得到（flagInPeril 要靠它）
 
   // 中央附近有沒有我方棋子：整輪算一次就好。
   // 量出來的病根：「隊友軍旗被貼住」的 146 個回合裡，AI 吃得掉那顆的只有 3%——

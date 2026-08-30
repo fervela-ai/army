@@ -62,7 +62,7 @@ const DEFAULT_W = {
   camp: 2.2,            // 佔行營
   campContested: 3.0,   // 敵人就在旁邊的行營
   campHome: 7.0,        // 自家或隊友家的行營被敵人逼近
-  campLeave: 4.0,       // 離開行營
+  campLeave: 26,        // 離開行營（行營的價值是持續的，留守拿不到分，只能讓離開變貴）
   campLeaveBlind: 6.0,  // 為了吃未知子而離營
   revenge: 5.0,         // 隊友折損處
   weakKnown: 12,        // 已曝光的弱子
@@ -788,7 +788,19 @@ export function scoreMove(game, seat, memory, { from, to }) {
     if (home && justLostNearby) score += w.campAfterLoss;
   }
   if (kindOf(from) === 'camp') {
-    score -= w.campLeave;               // 行營被佔很慘，離開要有理由
+    // 行營的價值是**持續的**，不是一次性的：
+    //   ① 裡面的棋子吃不掉、換不掉——一顆大子待在行營是永久有效的威脅
+    //   ② 行營位在路網樞紐，站住它，敵人只能繞邊路
+    //   ③ 兩者加成：正因為吃不掉，那個節點才會被「持續」鎖住
+    // 但在「替每一步打分」的架構裡，「留在原地」不是一步、拿不到分——
+    // 所以表達「留守有價值」的唯一方式，就是讓**離開**變貴。
+    // 原本只有 4.0，而吃掉一顆子有 22 分，難怪它出去吃人把要塞讓掉。
+    // 自家的行營比別人家的值錢；前面兩個（r2）又比後面的關鍵。
+    const fromKey = from.startsWith(`P${seat}-`) ? from.slice(from.indexOf('-') + 1) : null;
+    const holdValue = fromKey
+      ? ({ r2c2: 1, r2c4: 1, r4c2: 0.8, r4c4: 0.8, r3c3: 0.6 }[fromKey] ?? 0.5)
+      : 0.35;                                   // 別人家的行營，離開沒那麼可惜
+    score -= w.campLeave * holdValue;
     // 唯一值得離營的例外：對面是已經曝光的工兵，那是穩賺的一顆
     const worthIt = memory.weakKnown?.has(to) || bigThreat > 0 || suspectMine;
     if (enemyTarget && !worthIt) score -= w.campLeaveBlind;

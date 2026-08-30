@@ -159,6 +159,7 @@ body {
 .overlay[hidden] { display: none; }
 .overlay {
   position: fixed; inset: 0; display: grid; place-items: center; z-index: 20;
+  padding: 12px; overflow-y: auto;
   background: rgba(24, 20, 14, .55); backdrop-filter: blur(3px);
   animation: overlay-in .28s ease-out;
 }
@@ -166,7 +167,9 @@ body {
 .overlay-card {
   background: var(--panel-bg); border-radius: 20px; padding: 36px 52px; text-align: center;
   box-shadow: 0 24px 60px rgba(0,0,0,.35); animation: card-in .34s cubic-bezier(.2,1.2,.4,1);
-  min-width: 320px;
+  /* 結算的統計比一句「獲勝」長很多，手機上一定超出螢幕。
+     沒有高度上限的話會被切掉而且捲不動（Lynch 手機實測：「最後的戰績無法下拉」）。 */
+  min-width: 320px; max-width: 100%; max-height: 92vh; max-height: 92dvh; overflow-y: auto;
 }
 @keyframes card-in { from { transform: translateY(18px) scale(.94); opacity: 0 } to { transform: none; opacity: 1 } }
 .overlay-emblem { font-size: 56px; line-height: 1; margin-bottom: 10px; }
@@ -453,3 +456,8 @@ body {
 .zoombox { display: inline-flex; gap: 2px; }
 .zoom-btn { min-width: 40px; padding-left: 10px; padding-right: 10px; }
 .zoom-btn.is-on { background: var(--seat-0); border-color: var(--seat-0); color: #fff; }
+
+@media (max-width: 768px) {
+  /* 手機：左右留白吃掉太多寬度，統計表會被擠到換行 */
+  .overlay-card { padding: 24px 18px; min-width: 0; width: 100%; }
+}

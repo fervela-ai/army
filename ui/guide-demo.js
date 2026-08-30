@@ -11,10 +11,10 @@
 //
 // 順序也是 Lynch 定的：先棋盤 → 大本營 → 後兩排 → 邊佈陣邊講棋子 → 走子 → 怎麼贏。
 // 理由是新手第一屏就看到扛旗動畫，根本還不知道棋盤長什麼樣。
-import { createBoardView } from './board.js?v=136';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=136';
-import { legalMoves } from '../engine/src/rules.mjs?v=136';
-import { BOARD } from '../engine/src/board.mjs?v=136';
+import { createBoardView } from './board.js?v=140';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=140';
+import { legalMoves, movePath } from '../engine/src/rules.mjs?v=140';
+import { BOARD } from '../engine/src/board.mjs?v=140';
 
 const NS = 'http://www.w3.org/2000/svg';
 const L0 = referenceLayout(0);
@@ -49,6 +49,15 @@ const setupAt = (upto) => {
 };
 
 const solo = (node, piece) => ({ [node]: { seat: 0, piece } });
+
+// 動畫要走**真實路線**，不能給「起點→終點」兩個點——那會畫成一條穿過棋盤的斜線，
+// 跟實際走法完全不一樣（Lynch：「不要綠色直線，可以做成工兵真實路線嗎？」）。
+// movePath 就是遊戲裡在用的那一套，逐格、會轉彎、會順著鐵路的圓角滑。
+const realPath = (at, from, to, piece, seat) => {
+  const m = new Map(Object.entries(at));
+  m.set(from, { seat, piece });
+  try { return movePath({ at: m }, from, to) ?? [from, to]; } catch { return [from, to]; }
+};
 
 // 「怎麼贏」那幾步要用**殘局**，不能用剛佈好的滿盤 25 顆——
 // Lynch：「這張圖超怪，要就應該弄個殘局。左邊的子拿掉多一點，搞得像真的殘局的樣子。」
@@ -132,16 +141,20 @@ const STEPS = [
         + '但<b>一般棋子在鐵路上不能轉彎</b>——所以框起來的格子幾乎都排在同一條直線上，'
         + '只有旁邊那兩三個是走公路的一格。' },
 
-  { crop: 'fit', at: () => solo('P0-r5c1', '工兵'), movesOf: ['P0-r5c1', '工兵'],
-    text: '同一格換成<b>工兵</b>：它<b>可以任意轉彎</b>，能到的地方一下子多了三倍。'
-        + '代價是——<b>只要它轉了彎，全場都知道那顆是工兵</b>。這是這個遊戲最重要的資訊之一。' },
+  // 工兵這一步不要畫「它能到的 74 個點」——整盤都被框起來，反而什麼都沒說。
+  // 直接走一條**轉兩次彎**的路線，一般棋子做不到，一眼就懂差在哪。
+  { crop: 'full', at: () => solo('P0-r5c1', '工兵'),
+    walk: { from: 'P0-r5c1', to: 'P1-r5c1', piece: '工兵' },
+    text: '同一格換成<b>工兵</b>：它可以<b>任意轉彎</b>，像這樣穿過中央九宮、轉兩次彎跑到右家去——'
+        + '<b>一般棋子做不到</b>，只能直直走。'
+        + '代價是：<b>只要它轉了彎，全場都知道那顆是工兵</b>。這是這個遊戲最重要的資訊之一。' },
 
   { crop: 'seat0', at: () => endgame(),
     text: '最後看一遍<b>敵人是怎麼打進來的</b>。這是打了一陣子之後的<b>殘局</b>——'
         + '你的子剩沒幾顆了，軍旗還靠<b>三角雷</b>護著——正上方、左邊、右邊各一顆。' },
 
   { crop: 'seat0', at: () => endgame(),
-    foe: { from: 'P1-r1c1', to: 'P0-r5c2' },
+    foe: { from: 'P1-r1c1', to: 'P0-r5c2', piece: '工兵' },
     text: '敵人要打進來，得先拆雷，而<b>全場只有工兵拆得掉地雷</b>。'
         + '他派工兵來挖<b>軍旗正上方</b>那一顆。' },
 
@@ -152,7 +165,7 @@ const STEPS = [
   // 吃到軍旗之後不要停在「旗沒了、其他子還在」那一格畫面——實戰不存在那個狀態，
   // Lynch：「實戰根本不會有這張圖，這只會讓人混亂。吃掉後直接就下一張了。」
   { crop: 'seat0', at: () => endgame(['P0-r5c2']),
-    foe: { from: 'P0-r5c2', to: 'P0-r6c2' }, win: true, wipeAfter: true,
+    foe: { from: 'P0-r5c2', to: 'P0-r6c2', piece: '工兵' }, win: true, wipeAfter: true,
     text: '下一步他直接走上去。<b>任何一顆棋子碰到軍旗，這一家就出局</b>——'
         + '棋子<b>全部從盤上拿走</b>，連還沒被吃到的大子和地雷都一起消失。'
         + '所以扛旗不只是贏一顆棋，是一次清掉對方整家。' },
@@ -160,7 +173,6 @@ const STEPS = [
   // 直接畫出「贏了長什麼樣」：左右兩家整片消失，只剩你和隊友。
   // 只放一張四色棋盤講「要拿兩家」，看的人不會馬上抓到訴求（Lynch 回饋）。
   { crop: 'full', at: () => seatTint([0, 2]),
-    notes: [[['P1-r6c2'], '這家的旗'], [['P3-r6c2'], '這家也要']],
     text: '這就是贏的樣子：<b>左右兩家的軍旗都被拿下，整片從盤上消失</b>。'
         + '你和隊友必須<b>兩家都扛掉</b>才算贏，只扛一家不算。'
         + '<br>看完了——按「開始玩」就可以下第一局。' },
@@ -216,14 +228,16 @@ const svgEl = (tag, attrs) => {
 // 方框：畫在最外層，蓋過棋子與線
 function annotate(svg, ids, text = null) {
   const boxes = ids.map(id => nodeBox(svg, id)).filter(Boolean);
+  // 框要畫在格子**內側**：點位是連續鋪滿的（欄距等於格寬，中間沒有空隙），
+  // 往外撐一定會壓到隔壁那格（Lynch：「框框有點大，壓到了」）。
   for (const b of boxes) {
-    svg.appendChild(svgEl('rect', { class: 'g-mark', x: b.x - 6, y: b.y - 6,
-      width: b.w + 12, height: b.h + 12, rx: 9 }));
+    svg.appendChild(svgEl('rect', { class: 'g-mark', x: b.x + 3, y: b.y + 3,
+      width: b.w - 6, height: b.h - 6, rx: 7 }));
   }
   if (!text || !boxes.length) return;
   const b = boxes[0];
   const w = text.length * 13 + 14, h = 20;
-  const top = b.y - 6 - h - 4;
+  const top = b.y - h - 3;
   svg.appendChild(svgEl('rect', { class: 'g-chip', x: b.cx - w / 2, y: top, width: w, height: h, rx: 6 }));
   const t = svgEl('text', { class: 'g-chip-text', x: b.cx, y: top + h - 6, 'text-anchor': 'middle' });
   t.textContent = text;
@@ -269,13 +283,27 @@ export function buildBasicsTour() {
     const board = { at, turn: 0, revealedFlags: [] };
     const marks = s.movesOf ? reachable(s.movesOf[0], s.movesOf[1]) : (s.moves ?? []);
 
-    if (s.foe) {
+    if (s.walk) {
+      // 自己的棋子走一段真實路線（路徑由引擎算，動畫跟實戰同一套）
+      const { from, to, piece } = s.walk;
+      view.render({ board, mySeats: [0], viewerSeat: 0 });
+      cropTo(svg, FULL, null);
+      busy = true; next.disabled = prev.disabled = true;
+      await view.animateMove({ from, to, seat: 0, outcome: null, piece,
+        path: realPath(at, from, to, piece, 0) });
+      busy = false;
+      delete at[from];
+      at[to] = { seat: 0, piece };
+      // 不畫「上一手」指示線：那是起點連終點的直線，轉彎路線上看起來像穿牆
+      view.render({ board, mySeats: [0], viewerSeat: 0 });
+    } else if (s.foe) {
       const { from, to } = s.foe;
       at[from] = { seat: 1 };
       delete at[to];
       view.render({ board, mySeats: [0], viewerSeat: 0, hide: [from] });
       busy = true; next.disabled = prev.disabled = true;
-      await view.animateMove({ from, to, seat: 1, outcome: 'defenderDead', piece: null, path: [from, to] });
+      await view.animateMove({ from, to, seat: 1, outcome: 'defenderDead', piece: null,
+        path: realPath(at, from, to, s.foe.piece ?? '工兵', 1) });
       busy = false; next.disabled = false;
       delete at[from];
       if (s.wipeAfter) for (const id of Object.keys(at)) if (id.startsWith('P0-')) delete at[id];

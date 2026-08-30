@@ -325,7 +325,10 @@ body {
 .demo-foe-name { font-size: 11px; fill: #fff; font-weight: 600; }
 .demo-board.is-win .demo-cell { opacity: .25; }
 .demo-caption { font-size: 13.5px; line-height: 1.65; text-align: center; min-height: 2.8em; }
-.demo-bar { display: flex; align-items: center; gap: 12px; }
+/* 按鈕列釘在可視範圍底部：手機上不捲動就看不到「下一步」，
+   使用者會以為指南只有第一頁（Lynch 手機實測：「一開始沒下拉我還以為就這樣要開始」）。 */
+.demo-bar { display: flex; align-items: center; gap: 12px;
+  position: sticky; bottom: 0; padding: 8px 0 2px; background: var(--panel-bg); }
 .demo-dots { font-size: 12px; color: var(--ink-soft); }
 .demo-btn:disabled { opacity: .4; cursor: default; }
 
@@ -425,3 +428,9 @@ body {
 /* 版本號：看得到就好，不要搶到標題前面 */
 .uiver { font-size: 11px; color: var(--ink-soft); letter-spacing: .04em;
   padding: 2px 6px; border: 1px solid var(--line-road); border-radius: 6px; }
+
+/* 手機：棋盤壓低一點，讓說明文字與按鈕列跟圖同時看得到 */
+@media (max-width: 768px) {
+  .demo-board { max-height: 40vh; }
+  .demo-caption { font-size: 14px; }
+}

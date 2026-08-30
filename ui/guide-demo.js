@@ -11,10 +11,10 @@
 //
 // 順序也是 Lynch 定的：先棋盤 → 大本營 → 後兩排 → 邊佈陣邊講棋子 → 走子 → 怎麼贏。
 // 理由是新手第一屏就看到扛旗動畫，根本還不知道棋盤長什麼樣。
-import { createBoardView } from './board.js?v=140';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=140';
-import { legalMoves, movePath } from '../engine/src/rules.mjs?v=140';
-import { BOARD } from '../engine/src/board.mjs?v=140';
+import { createBoardView } from './board.js?v=141';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=141';
+import { legalMoves, movePath } from '../engine/src/rules.mjs?v=141';
+import { BOARD } from '../engine/src/board.mjs?v=141';
 
 const NS = 'http://www.w3.org/2000/svg';
 const L0 = referenceLayout(0);
@@ -326,7 +326,10 @@ export function buildBasicsTour() {
     svg.classList.toggle('is-win', !!s.win);
     caption.innerHTML = s.text;
     dots.textContent = `${i + 1} / ${STEPS.length}`;
+    // 兩顆按鈕的狀態統一在這裡收尾。動畫途中會暫時停用，如果只在某一個分支裡解鎖，
+    // 漏掉的那個分支就會讓「下一步」永遠按不下去（工兵走子那一步實際發生過）。
     prev.disabled = i === 0;
+    next.disabled = false;
     next.textContent = i === STEPS.length - 1 ? '再看一次' : '下一步 ›';
   };
   prev.addEventListener('click', () => { if (!busy && i > 0) { i--; draw(); } });

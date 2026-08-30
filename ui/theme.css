@@ -444,3 +444,12 @@ body {
   .demo-board { max-height: 32vh; max-height: 32dvh; }
   .demo-caption { font-size: 16px; line-height: 1.7; }
 }
+
+/* 鏡頭拉近時可以拖曳平移：要關掉瀏覽器自己的觸控捲動，否則手指一動就在捲頁面 */
+.board.is-pannable { touch-action: none; cursor: grab; }
+.board.is-pannable:active { cursor: grabbing; }
+
+/* 三段大小的切換：擠在一起像一組，不要看起來像三顆各自獨立的按鈕 */
+.zoombox { display: inline-flex; gap: 2px; }
+.zoom-btn { min-width: 40px; padding-left: 10px; padding-right: 10px; }
+.zoom-btn.is-on { background: var(--seat-0); border-color: var(--seat-0); color: #fff; }

@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=152';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=152';
-import { localSession } from './session.js?v=152';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=152';
-import { buildGuide } from './guide.js?v=152';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=152';
-import { createBoardView } from './board.js?v=152';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=152';
+import { SEATS } from '../engine/src/board.mjs?v=157';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=157';
+import { localSession } from './session.js?v=157';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=157';
+import { buildGuide } from './guide.js?v=157';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=157';
+import { createBoardView } from './board.js?v=157';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=157';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,7 +24,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=152），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=157），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -57,15 +57,31 @@ if (bigParam === '1') { try { localStorage.setItem('army-online:big', '1'); } ca
 if (bigParam === '0') { try { localStorage.removeItem('army-online:big'); } catch {} }
 let BIG_MODE = false;
 try { BIG_MODE = localStorage.getItem('army-online:big') === '1'; } catch {}
-let zoomOn = BIG_MODE;
+// 三段大小，每一段都能拖曳平移（Lynch 指定）。記在本機，下一局還是同一個習慣。
+const ZOOMS = [['小', 'full'], ['中', 'mid'], ['大', 'big']];
+let zoomLevel = 2;
+try { zoomLevel = Number(localStorage.getItem('army-online:zoom') ?? 2); } catch {}
+if (!Number.isInteger(zoomLevel) || zoomLevel < 0 || zoomLevel > 2) zoomLevel = 2;
 if (BIG_MODE) {
-  const btn = document.createElement('button');
-  btn.className = 'btn';
-  btn.id = 'zoomToggle';
-  const label = () => { btn.textContent = zoomOn ? '看全盤' : '放大我這邊'; };
-  label();
-  btn.addEventListener('click', () => { zoomOn = !zoomOn; label(); refresh(); });
-  els.guide.before(btn);
+  const box = document.createElement('span');
+  box.className = 'zoombox';
+  box.id = 'zoomToggle';
+  const btns = ZOOMS.map(([label], i) => {
+    const b = document.createElement('button');
+    b.className = 'btn zoom-btn';
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      zoomLevel = i;
+      try { localStorage.setItem('army-online:zoom', String(i)); } catch {}
+      sync();
+      refresh();
+    });
+    return b;
+  });
+  const sync = () => btns.forEach((b, i) => b.classList.toggle('is-on', i === zoomLevel));
+  sync();
+  box.append(...btns);
+  els.guide.before(box);
 }
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
@@ -465,7 +481,7 @@ function refresh() {
     lastMove: inSetup ? null : lastMove,
     recentMoves: inSetup ? [] : recentMoves, viewerSeat: seat,
   });
-  view.setCamera(zoomOn ? 'seat' : 'full');
+  view.setCamera(BIG_MODE ? ZOOMS[zoomLevel][1] : 'full');
 
   if (inSetup) {
     els.setupWho.textContent = `${nameOf(setupSeat)} 佈陣中`;

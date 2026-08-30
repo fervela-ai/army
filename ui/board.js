@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=152';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=152';
-import { insignia } from './insignia.js?v=152';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=157';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=157';
+import { insignia } from './insignia.js?v=157';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -40,16 +40,98 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   //  * 代理而不是逐顆掛：棋盤每次重畫都會換掉所有棋子元素，掛在元素上的監聽會跟著消失，
   //    按到一半剛好遇到重畫就會斷掉。
   //  * 一律 preventDefault，否則拖曳會變成框選棋子上的文字，選取一旦開始後續點擊全亂。
+  //  * 鏡頭拉近時可以拖曳平移看別家（Lynch：「放大全盤後我還是可以靠拖曳看到全局嗎？」）。
+  //    選取仍然發生在 pointerdown（那是刻意的，見上），拖過之後就不觸發 pointerup 的
+  //    「拖到另一顆放開」，否則想看別家會變成走子。
   const nodeAt = (e) => e.target.closest?.('[data-node]')?.getAttribute('data-node') ?? null;
+  let cam = null;                     // null＝全盤，不能平移
+  let drag = null;
+  const DRAG_MIN = 8;                 // 手指本來就會晃，太小會把點擊誤判成拖曳
+  const pointers = new Map();
+  let pinch = null;
+  const MIN_W = 200;                  // 再放大就只剩兩三格，看不到脈絡
+
+  const applyCam = () => {
+    cam.w = Math.min(Math.max(cam.w, MIN_W), W);
+    cam.h = Math.min(cam.h, H);
+    cam.x = Math.min(Math.max(cam.x, 0), Math.max(0, W - cam.w));
+    cam.y = Math.min(Math.max(cam.y, 0), Math.max(0, H - cam.h));
+    svg.setAttribute('viewBox', `${cam.x} ${cam.y} ${cam.w} ${cam.h}`);
+    syncCompact();                    // 縮放到一定大小，棋子名稱自己回來
+  };
+
+  // 兩指縮放：Lynch「或是我拖曳到某個大小，就自動有文字」——
+  // 文字的顯示本來就是看格子的實際像素，所以自由縮放天生就有這個行為，不用另外做。
+  const dist = ([a, b]) => Math.hypot(a.x - b.x, a.y - b.y);
+  const mid = ([a, b]) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const toBoard = (pt) => {
+    const r = svg.getBoundingClientRect();
+    return { x: cam.x + (pt.x - r.left) / r.width * cam.w,
+             y: cam.y + (pt.y - r.top) / r.height * cam.h };
+  };
+
   svg.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    // 收不到 pointerup 的手指要清掉（手指滑出畫面、被系統中斷都會發生）。
+    // 不清的話它會一直留在記錄裡，下一次「單指拖曳」就被誤判成雙指縮放——
+    // 症狀是想平移卻突然縮放，實際踩到過。
+    const now = e.timeStamp || 0;
+    for (const [id, p] of pointers) if (now - (p.t ?? 0) > 3000) pointers.delete(id);
+    try { svg.setPointerCapture?.(e.pointerId); } catch { /* 不支援就算了 */ }
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: now });
+    if (cam && pointers.size === 2) {
+      const pts = [...pointers.values()];
+      const m = mid(pts);
+      pinch = { d: dist(pts), w: cam.w, h: cam.h, anchor: toBoard(m), screen: m };
+      drag = null;
+      return;                          // 兩指是在縮放，不要順便選子
+    }
+    if (cam) drag = { x: e.clientX, y: e.clientY, camX: cam.x, camY: cam.y, moved: false };
     const id = nodeAt(e);
     if (id) onNodeClick(id);
   });
+  svg.addEventListener('pointermove', (e) => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: e.timeStamp || 0 });
+    if (pinch && cam && pointers.size >= 2) {
+      const pts = [...pointers.values()].slice(0, 2);
+      const d = dist(pts);
+      if (d < 1) return;
+      const f = pinch.d / d;                       // 兩指張開＝f<1＝視野變小＝放大
+      const r = svg.getBoundingClientRect();
+      cam.w = pinch.w * f;
+      cam.h = pinch.h * f;
+      // 讓兩指中點壓著的那一點留在原地，縮放才不會亂飄
+      cam.x = pinch.anchor.x - (pinch.screen.x - r.left) / r.width * cam.w;
+      cam.y = pinch.anchor.y - (pinch.screen.y - r.top) / r.height * cam.h;
+      applyCam();
+      return;
+    }
+    if (!drag || !cam) return;
+    const r = svg.getBoundingClientRect();
+    if (!r.width) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < DRAG_MIN) return;
+    drag.moved = true;
+    const k = cam.w / r.width;
+    cam.x = Math.min(Math.max(drag.camX - dx * k, 0), Math.max(0, W - cam.w));
+    cam.y = Math.min(Math.max(drag.camY - dy * k, 0), Math.max(0, H - cam.h));
+    applyCam();
+  });
+  const endDrag = (e) => {
+    if (e?.pointerId != null) pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    const panned = drag?.moved;
+    drag = null;
+    return Boolean(panned);
+  };
   svg.addEventListener('pointerup', (e) => {
+    if (endDrag(e)) return;           // 剛剛是在拖動畫面，不是要走子
     const id = nodeAt(e);
     if (id) onPointerUp?.(id);
   });
+  svg.addEventListener('pointercancel', endDrag);
+  svg.addEventListener('pointerleave', endDrag);
+  svg.addEventListener('lostpointercapture', endDrag);
   svg.addEventListener('dragstart', (e) => e.preventDefault());
 
   const rotor = el('g', { class: 'rotor' });
@@ -324,8 +406,16 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   // 手機上整盤縮到 375px 時，一顆棋只有 20px（實測），手指點不準；
   // 只框自己那一區的話同一支手機上是 60px。代價是看不到另外兩家的細節，
   // 所以一定要配一顆切回全盤的按鈕，不能只給放大。
+  // 三段大小（Lynch 指定：大／中／小都要能拖曳平移）。
+  // 'small' 是整盤，本來就裝得下所以拖不動；'mid'、'big' 都可以拖。
   function setCamera(mode) {
-    if (mode !== 'seat') { svg.setAttribute('viewBox', `0 0 ${W} ${H}`); syncCompact(); return; }
+    if (mode !== 'seat' && mode !== 'mid' && mode !== 'big') {
+      cam = null;
+      svg.classList.remove('is-pannable');
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      syncCompact();
+      return;
+    }
     const mine = `P${bottomSeat}-`;
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     for (const n of svg.querySelectorAll('rect.node-hit')) {
@@ -338,8 +428,20 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
     }
     if (x0 > x1) return;
     const pad = 18;
-    svg.setAttribute('viewBox', `${x0 - pad} ${y0 - pad} ${x1 - x0 + pad * 2} ${y1 - y0 + pad * 2}`);
-    syncCompact();                     // 格子變大了，文字要跟著回來
+    // 「中」是「大」的 1.7 倍視野：看得到自己這邊＋左右兩家逼近的部分
+    const f = mode === 'mid' ? 1.7 : 1;
+    // 重新設鏡頭時只換大小，位置盡量沿用上一次拖到的地方，不要每走一步就跳回自己家
+    const w = (x1 - x0 + pad * 2) * f, h = (y1 - y0 + pad * 2) * f;
+    const keep = cam && Math.abs(cam.w - w) < 1 && Math.abs(cam.h - h) < 1;
+    // 換大小時以自己的陣地為中心重新對焦；只是重畫（大小沒變）就留在原地
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    cam = {
+      x: keep ? cam.x : cx - w / 2,
+      y: keep ? cam.y : cy - h / 2,
+      w, h,
+    };
+    svg.classList.add('is-pannable');
+    applyCam();
   }
 
   return { render, animateMove, STEP_MS, setBottomSeat, setCamera,

@@ -11,10 +11,10 @@
 //
 // 順序也是 Lynch 定的：先棋盤 → 大本營 → 後兩排 → 邊佈陣邊講棋子 → 走子 → 怎麼贏。
 // 理由是新手第一屏就看到扛旗動畫，根本還不知道棋盤長什麼樣。
-import { createBoardView } from './board.js?v=132';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=132';
-import { legalMoves } from '../engine/src/rules.mjs?v=132';
-import { BOARD } from '../engine/src/board.mjs?v=132';
+import { createBoardView } from './board.js?v=136';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=136';
+import { legalMoves } from '../engine/src/rules.mjs?v=136';
+import { BOARD } from '../engine/src/board.mjs?v=136';
 
 const NS = 'http://www.w3.org/2000/svg';
 const L0 = referenceLayout(0);
@@ -36,9 +36,9 @@ const ALL = SETUP.length;
 const reachable = (node, piece) =>
   legalMoves({ at: new Map([[node, { seat: 0, piece }]]) }, node);
 
-const seatTint = () => {
+const seatTint = (seats = [0, 1, 2, 3]) => {
   const at = {};
-  for (const [id, n] of BOARD.nodes) if (n.seat != null) at[id] = { seat: n.seat };
+  for (const [id, n] of BOARD.nodes) if (n.seat != null && seats.includes(n.seat)) at[id] = { seat: n.seat };
   return at;
 };
 
@@ -49,6 +49,24 @@ const setupAt = (upto) => {
 };
 
 const solo = (node, piece) => ({ [node]: { seat: 0, piece } });
+
+// 「怎麼贏」那幾步要用**殘局**，不能用剛佈好的滿盤 25 顆——
+// Lynch：「這張圖超怪，要就應該弄個殘局。左邊的子拿掉多一點，搞得像真的殘局的樣子。」
+// 滿盤時敵方工兵根本走不到你家門口，那張圖本身就在教錯的東西。
+//
+// 護旗用**三角雷**（軍旗正上、左、右各一顆），因為那是實戰最常見的護旗法，
+// 也是 Lynch 指定要示範的：敵方工兵拆掉**最上面那顆**，就正好站到軍旗旁邊。
+const ENDGAME = {
+  'P0-r6c2': '軍旗',
+  'P0-r5c2': '地雷', 'P0-r6c1': '地雷', 'P0-r6c3': '地雷',
+  'P0-r6c4': '排長', 'P0-r6c5': '連長',
+  'P0-r1c3': '團長', 'P0-r2c1': '營長',
+};
+const endgame = (drop = []) => {
+  const at = {};
+  for (const [id, piece] of Object.entries(ENDGAME)) if (!drop.includes(id)) at[id] = { seat: 0, piece };
+  return at;
+};
 
 const STEPS = [
   { crop: 'full', at: seatTint,
@@ -118,26 +136,33 @@ const STEPS = [
     text: '同一格換成<b>工兵</b>：它<b>可以任意轉彎</b>，能到的地方一下子多了三倍。'
         + '代價是——<b>只要它轉了彎，全場都知道那顆是工兵</b>。這是這個遊戲最重要的資訊之一。' },
 
-  { crop: 'seat0', at: () => setupAt(ALL),
-    text: '知道怎麼走了，最後看一遍<b>敵人是怎麼打進來的</b>。' },
+  { crop: 'seat0', at: () => endgame(),
+    text: '最後看一遍<b>敵人是怎麼打進來的</b>。這是打了一陣子之後的<b>殘局</b>——'
+        + '你的子剩沒幾顆了，軍旗還靠<b>三角雷</b>護著——正上方、左邊、右邊各一顆。' },
 
-  { crop: 'seat0', at: () => setupAt(ALL),
-    foe: { from: 'P1-r1c1', to: 'P0-r6c1' },
-    text: '敵人要打進來，得先派<b>工兵</b>拆掉地雷——全場只有工兵拆得掉。' },
+  { crop: 'seat0', at: () => endgame(),
+    foe: { from: 'P1-r1c1', to: 'P0-r5c2' },
+    text: '敵人要打進來，得先拆雷，而<b>全場只有工兵拆得掉地雷</b>。'
+        + '他派工兵來挖<b>軍旗正上方</b>那一顆。' },
 
-  { crop: 'seat0', at: () => { const a = setupAt(ALL); delete a['P0-r6c1']; return a; }, foeAt: 'P0-r6c1',
-    text: '雷被拆掉了，<b>通往軍旗的路就開了</b>。' },
+  { crop: 'seat0', at: () => endgame(['P0-r5c2']), foeAt: 'P0-r5c2',
+    text: '<b>地雷沒了，工兵還活著</b>，就站在原本那顆雷的位置上——'
+        + '三角雷缺了一角，而且他現在<b>正好貼著你的軍旗</b>。' },
 
-  { crop: 'seat0', at: () => { const a = setupAt(ALL); delete a['P0-r6c1']; return a; },
-    foe: { from: 'P0-r6c1', to: 'P0-r6c2' }, win: true,
-    text: '接著<b>任何一顆棋子碰到軍旗</b>，這一家就出局了。' },
-
-  { crop: 'seat0', at: () => ({}), win: true,
-    text: '出局的那一家，<b>棋子全部從盤上拿走</b>——連還沒被吃到的大子和地雷都一起消失。'
+  // 吃到軍旗之後不要停在「旗沒了、其他子還在」那一格畫面——實戰不存在那個狀態，
+  // Lynch：「實戰根本不會有這張圖，這只會讓人混亂。吃掉後直接就下一張了。」
+  { crop: 'seat0', at: () => endgame(['P0-r5c2']),
+    foe: { from: 'P0-r5c2', to: 'P0-r6c2' }, win: true, wipeAfter: true,
+    text: '下一步他直接走上去。<b>任何一顆棋子碰到軍旗，這一家就出局</b>——'
+        + '棋子<b>全部從盤上拿走</b>，連還沒被吃到的大子和地雷都一起消失。'
         + '所以扛旗不只是贏一顆棋，是一次清掉對方整家。' },
 
-  { crop: 'full', at: seatTint,
-    text: '要贏下整局，你和隊友必須拿下敵方<b>兩家</b>的軍旗。只扛掉一家不算贏。'
+  // 直接畫出「贏了長什麼樣」：左右兩家整片消失，只剩你和隊友。
+  // 只放一張四色棋盤講「要拿兩家」，看的人不會馬上抓到訴求（Lynch 回饋）。
+  { crop: 'full', at: () => seatTint([0, 2]),
+    notes: [[['P1-r6c2'], '這家的旗'], [['P3-r6c2'], '這家也要']],
+    text: '這就是贏的樣子：<b>左右兩家的軍旗都被拿下，整片從盤上消失</b>。'
+        + '你和隊友必須<b>兩家都扛掉</b>才算贏，只扛一家不算。'
         + '<br>看完了——按「開始玩」就可以下第一局。' },
 ];
 
@@ -253,8 +278,9 @@ export function buildBasicsTour() {
       await view.animateMove({ from, to, seat: 1, outcome: 'defenderDead', piece: null, path: [from, to] });
       busy = false; next.disabled = false;
       delete at[from];
+      if (s.wipeAfter) for (const id of Object.keys(at)) if (id.startsWith('P0-')) delete at[id];
+      else if (s.win) delete at['P0-r6c2'];
       at[to] = { seat: 1 };
-      if (s.win) delete at['P0-r6c2'];
       view.render({ board, mySeats: [0], viewerSeat: 0, lastMove: { from, to, seat: 1 } });
     } else {
       view.render({ board, mySeats: [0], viewerSeat: 0, selected: null });
@@ -267,6 +293,7 @@ export function buildBasicsTour() {
       cropTo(svg, FULL, [s.movesOf[0], ...marks]);
       annotate(svg, marks);                     // 可走的點也用方框，不用小藍點
     } else cropTo(svg, FULL, null);
+    for (const [ids, text] of s.notes ?? []) annotate(svg, ids, text);
 
     svg.classList.toggle('is-win', !!s.win);
     caption.innerHTML = s.text;

@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=123';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=123';
-import { localSession } from './session.js?v=123';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=123';
-import { buildGuide } from './guide.js?v=123';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=123';
-import { createBoardView } from './board.js?v=123';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=123';
+import { SEATS } from '../engine/src/board.mjs?v=132';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=132';
+import { localSession } from './session.js?v=132';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=132';
+import { buildGuide } from './guide.js?v=132';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=132';
+import { createBoardView } from './board.js?v=132';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=132';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -20,8 +20,13 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer']
   .map(id => [id, document.getElementById(id)]));
+
+// 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
+// 值從自己的 import URL 取（?v=132），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
+if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
 // 不再自己抱著整個房間——AI 之後要搬到伺服器，這裡就只換成 remoteSession。
@@ -284,7 +289,7 @@ async function doMove(seat, from, to) {
   try {
     const rec = await session.record();
     localStorage.setItem(CURRENT_KEY, JSON.stringify({
-      at: Date.now(), code: gameCode, player: playerName(), aiVersion: AI_VERSION,
+      at: Date.now(), code: gameCode, player: playerName(), aiVersion: AI_VERSION, uiVersion: UI_VERSION,
       ...rec, plies: S.plies,
       ai: els.useSearch.checked ? 'search' : 'heuristic',
     }));
@@ -647,7 +652,7 @@ async function saveGameRecord(result) {
       at: Date.now(),
       code: gameCode,
       player: playerName(),
-      aiVersion: AI_VERSION,
+      aiVersion: AI_VERSION, uiVersion: UI_VERSION,
       mode: solo() ? 'solo' : 'hotseat',
       ai: els.useSearch.checked ? 'search' : 'heuristic',
       result,
@@ -932,7 +937,7 @@ els.restart.addEventListener('click', async () => {
   if (S.status === 'playing') {
     try {
       const rec = await session.record();
-      uploadRecord({ at: Date.now(), code: gameCode, player: playerName(), aiVersion: AI_VERSION,
+      uploadRecord({ at: Date.now(), code: gameCode, player: playerName(), aiVersion: AI_VERSION, uiVersion: UI_VERSION,
         mode: solo() ? 'solo' : 'hotseat', ai: els.useSearch.checked ? 'search' : 'heuristic',
         result: null, unfinished: true, abandoned: true, ...rec, plies: S.plies });
     } catch { /* 回傳失敗不該擋住重新開局 */ }

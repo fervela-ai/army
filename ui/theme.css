@@ -416,5 +416,12 @@ body {
 .alive-table td.is-none { color: var(--ink-soft); font-weight: 400; }
 
 /* 指南圖上的直接標示 */
-.g-label { font-size: 15px; font-weight: 700; fill: var(--ink);
-  paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+/* 教學的標註：另一個顏色的大方框 ＋ 上方的色塊文字。
+   不要用小點或圈圈疊在棋子上（會糊成一坨），也不要讓字直接壓在鐵路線上。 */
+.g-mark { fill: rgba(15,118,110,.18); stroke: #0F766E; stroke-width: 4; }
+.g-chip { fill: #0F766E; }
+.g-chip-text { font-size: 12px; font-weight: 700; fill: #fff; }
+
+/* 版本號：看得到就好，不要搶到標題前面 */
+.uiver { font-size: 11px; color: var(--ink-soft); letter-spacing: .04em;
+  padding: 2px 6px; border: 1px solid var(--line-road); border-radius: 6px; }

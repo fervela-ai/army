@@ -4,12 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋（試玩版）</title>
-<link rel="stylesheet" href="theme.css?v=123">
+<link rel="stylesheet" href="theme.css?v=132">
 </head>
 <body>
 <div class="app">
   <header class="topbar">
     <h1 class="title">四國軍棋</h1>
+    <!-- 版本號要看得到：回報問題時才分得出他看的是哪一版（Lynch 要求）。
+         內容由 tools/bump-ui-version.sh 改的 ?v= 帶進來，不必另外維護。 -->
+    <span class="uiver" id="uiVer" title="介面版本"></span>
     <!-- 對局代號要留在畫面上：討論棋局時大家是丟截圖的，代號不在圖裡就對不上是哪一局 -->
     <div class="gamecode" id="gameCode" title="這一局的代號，回報問題時附上它">—</div>
     <div class="turn" id="turn">準備中</div>
@@ -79,6 +82,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=123"></script>
+<script type="module" src="app.js?v=132"></script>
 </body>
 </html>

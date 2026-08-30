@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=151';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=151';
-import { localSession } from './session.js?v=151';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=151';
-import { buildGuide } from './guide.js?v=151';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=151';
-import { createBoardView } from './board.js?v=151';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=151';
+import { SEATS } from '../engine/src/board.mjs?v=152';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=152';
+import { localSession } from './session.js?v=152';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=152';
+import { buildGuide } from './guide.js?v=152';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=152';
+import { createBoardView } from './board.js?v=152';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=152';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,7 +24,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=151），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=152），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -50,7 +50,13 @@ checkForUpdate();
 // 手機棋盤放大：實驗中，只有網址帶 ?big=1 的人看得到，朋友的體驗不受影響。
 // 整盤縮到 375px 時一顆棋只有 20px，手指點不準；只框自己的陣地＋中央九宮是 60px。
 // 代價是看不到另外兩家的細節，所以一定要有一顆切回全盤的按鈕。
-const BIG_MODE = new URLSearchParams(location.search).get('big') === '1';
+// 開過一次就記住：更新按鈕會把網址改寫成 ?v=NNN，會把 big=1 洗掉，
+// 每次都要重打一次網址很煩（Lynch 實際踩到）。?big=0 可以關掉。
+const bigParam = new URLSearchParams(location.search).get('big');
+if (bigParam === '1') { try { localStorage.setItem('army-online:big', '1'); } catch {} }
+if (bigParam === '0') { try { localStorage.removeItem('army-online:big'); } catch {} }
+let BIG_MODE = false;
+try { BIG_MODE = localStorage.getItem('army-online:big') === '1'; } catch {}
 let zoomOn = BIG_MODE;
 if (BIG_MODE) {
   const btn = document.createElement('button');

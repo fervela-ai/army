@@ -6,16 +6,16 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=107';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=107';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=117';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=117';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=107';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=107';
-import { VALUE } from '../engine/ai/lookahead.mjs?v=107';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=107';
-import { searchMove } from '../engine/ai/search.mjs?v=107';
+} from '../engine/src/room.mjs?v=117';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=117';
+import { VALUE } from '../engine/ai/lookahead.mjs?v=117';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=117';
+import { searchMove } from '../engine/ai/search.mjs?v=117';
 
 // controllers：四個座位分別由誰控制。'ai' 或玩家代號（'A'、'B'）。
 // 所有模式都只是這張表的不同填法——引擎那層本來就是用「座位→玩家」在跑的：
@@ -162,10 +162,13 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
     stats: async (seat) => {
       const team = TEAM_OF(seat);
       const alive = { mine: { 司令: 0, 軍長: 0, 師長: 0 }, foe: { 司令: 0, 軍長: 0, 師長: 0 } };
+      // 每一家分開算（Lynch 要的表格：縱軸四家、橫軸 1／2／3／炸彈）
+      const bySeat = SEATS.map(() => ({ 司令: 0, 軍長: 0, 師長: 0, 炸彈: 0 }));
       if (room.game) {
         for (const [, o] of room.game.at) {
           const side = TEAM_OF(o.seat) === team ? 'mine' : 'foe';
           if (o.piece in alive[side]) alive[side][o.piece]++;
+          if (o.piece in bySeat[o.seat]) bySeat[o.seat][o.piece]++;
         }
       }
       // 出兵勝率：我方主動發起的攻擊裡，吃掉對方的比例
@@ -194,8 +197,9 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
         if (o.seat === seat && o.piece === '司令') myCommanderAlive = true;
 
       return {
-        alive, attacks, won, traded, lost, minesDug, bombsSpent, myCommanderAlive,
-        winRate: attacks ? won / attacks : null,
+        alive, bySeat, attacks, won, traded, lost, minesDug, bombsSpent, myCommanderAlive,
+        // Lynch：「同歸於盡應該算贏，因為不虧。」
+        winRate: attacks ? (won + traded) / attacks : null,
         bombBonus, bombKills,
         plies: room.game?.plies ?? 0,
       };

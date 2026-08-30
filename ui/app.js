@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=107';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=107';
-import { localSession } from './session.js?v=107';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=107';
-import { buildGuide } from './guide.js?v=107';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=107';
-import { createBoardView } from './board.js?v=107';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=107';
+import { SEATS } from '../engine/src/board.mjs?v=117';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=117';
+import { localSession } from './session.js?v=117';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=117';
+import { buildGuide } from './guide.js?v=117';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=117';
+import { createBoardView } from './board.js?v=117';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=117';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -548,10 +548,8 @@ async function showStats() {
   const ul = document.createElement('ul');
   ul.className = 'stats-list';
   ul.append(
-    row('我方殘存大子', big(st.alive.mine), '你和對家兩家合計'),
-    row('敵方殘存大子', big(st.alive.foe), '左右兩家合計'),
     row('出兵勝率', st.winRate == null ? '—' : `${Math.round(st.winRate * 100)}%`,
-      st.attacks ? `出手 ${st.attacks}　吃掉 ${st.won}　同歸於盡 ${st.traded}　陣亡 ${st.lost}` : '這局沒有出手'),
+      st.attacks ? `出手 ${st.attacks}　吃掉 ${st.won}　同歸於盡 ${st.traded}（算贏，不虧）　陣亡 ${st.lost}` : '這局沒有出手'),
     row('總手數', String(st.plies)),
   );
   if (st.bombBonus) {
@@ -562,6 +560,40 @@ async function showStats() {
   h.className = 'stats-title';
   h.textContent = '本局統計';
   box.append(h, ul);
+
+  // 殘存大子做成表格：縱軸四家、橫軸 1／2／3／炸彈（Lynch 指定）
+  if (st.bySeat) {
+    const t = document.createElement('table');
+    t.className = 'alive-table';
+    const head = document.createElement('tr');
+    head.append(document.createElement('th'));
+    for (const label of ['司令', '軍長', '師長', '炸彈']) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      head.append(th);
+    }
+    t.append(head);
+    SEATS.forEach((seat) => {
+      const tr = document.createElement('tr');
+      const name = document.createElement('th');
+      name.className = 'alive-seat';
+      name.textContent = nameOf(seat);
+      name.style.color = `var(--seat-${seat})`;
+      tr.append(name);
+      for (const k of ['司令', '軍長', '師長', '炸彈']) {
+        const td = document.createElement('td');
+        const n = st.bySeat[seat]?.[k] ?? 0;
+        td.textContent = n || '—';
+        if (!n) td.className = 'is-none';
+        tr.append(td);
+      }
+      t.append(tr);
+    });
+    const cap = document.createElement('div');
+    cap.className = 'stats-note';
+    cap.textContent = '各家還剩下的大子與炸彈';
+    box.append(cap, t);
+  }
 
   // 新解鎖的成就：只跳沒拿過的，拿過的第二次就沒有感覺了
   const fresh = checkAchievements(st, { win: S.result?.type === 'win' && S.result.team === 0 });

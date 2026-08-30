@@ -404,3 +404,15 @@ body {
 .ach-name { font-weight: 700; white-space: nowrap; }
 .ach-desc { color: var(--ink-soft); font-size: 12px; }
 .ach-progress { margin-top: 8px; font-size: 12px; color: var(--ink-soft); }
+
+/* 殘存大子表 */
+.alive-table { border-collapse: collapse; margin-top: 6px; font-size: 13px; }
+.alive-table th, .alive-table td { padding: 4px 12px; text-align: center; }
+.alive-table th { font-weight: 700; color: var(--ink-soft); font-size: 12px; }
+.alive-table .alive-seat { text-align: left; font-weight: 700; font-size: 13px; }
+.alive-table td { font-variant-numeric: tabular-nums; font-weight: 700; }
+.alive-table td.is-none { color: var(--ink-soft); font-weight: 400; }
+
+/* 指南圖上的直接標示 */
+.g-label { font-size: 15px; font-weight: 700; fill: var(--ink);
+  paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }

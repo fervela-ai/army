@@ -41,7 +41,7 @@ export function createMemory(seat = null, weights = null, rnd = null) {
 // 改由程式跑幾百局對打來決定數值。改動請附上量測結果，不要憑感覺。
 const DEFAULT_W = {
   hqPull: 0.6,          // 往敵方大本營推進
-  flagRush: 1.2,        // 追已顯露的敵方軍旗
+  flagRush: 12,        // 追已顯露的敵方軍旗
   flagDefend: 3.0,      // 守自己的軍旗
   mateFlagDefend: 2.2,  // 守隊友的軍旗
   homeDefend: 4.0,      // 清掉打進自家的敵人

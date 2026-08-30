@@ -11,10 +11,10 @@
 //
 // 順序也是 Lynch 定的：先棋盤 → 大本營 → 後兩排 → 邊佈陣邊講棋子 → 走子 → 怎麼贏。
 // 理由是新手第一屏就看到扛旗動畫，根本還不知道棋盤長什麼樣。
-import { createBoardView } from './board.js?v=141';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=141';
-import { legalMoves, movePath } from '../engine/src/rules.mjs?v=141';
-import { BOARD } from '../engine/src/board.mjs?v=141';
+import { createBoardView } from './board.js?v=144';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=144';
+import { legalMoves, movePath } from '../engine/src/rules.mjs?v=144';
+import { BOARD } from '../engine/src/board.mjs?v=144';
 
 const NS = 'http://www.w3.org/2000/svg';
 const L0 = referenceLayout(0);
@@ -278,6 +278,11 @@ export function buildBasicsTour() {
   let i = 0, busy = false;
   const draw = async () => {
     const s = STEPS[i];
+    // 說明文字先換，動畫後播：不然動畫在跑的時候，畫面上還是上一步的字，
+    // 看的人不知道自己正在看什麼。
+    caption.innerHTML = s.text;
+    dots.textContent = `${i + 1} / ${STEPS.length}`;
+    next.textContent = i === STEPS.length - 1 ? '再看一次' : '下一步 ›';
     const at = s.at();
     if (s.foeAt) at[s.foeAt] = { seat: 1 };              // 敵子蓋著，跟實戰一樣看不到身分
     const board = { at, turn: 0, revealedFlags: [] };
@@ -299,15 +304,16 @@ export function buildBasicsTour() {
     } else if (s.foe) {
       const { from, to } = s.foe;
       at[from] = { seat: 1 };
-      delete at[to];
+      // 目標格的棋子要留到動畫結束才拿掉。先刪的話，地雷在工兵還沒走到就消失了
+      // （Lynch：「第18步，工兵還沒走到地雷就先消失了」）。
       view.render({ board, mySeats: [0], viewerSeat: 0, hide: [from] });
       busy = true; next.disabled = prev.disabled = true;
       await view.animateMove({ from, to, seat: 1, outcome: 'defenderDead', piece: null,
         path: realPath(at, from, to, s.foe.piece ?? '工兵', 1) });
       busy = false; next.disabled = false;
       delete at[from];
+      delete at[to];                                   // 這時候才吃掉（地雷／軍旗）
       if (s.wipeAfter) for (const id of Object.keys(at)) if (id.startsWith('P0-')) delete at[id];
-      else if (s.win) delete at['P0-r6c2'];
       at[to] = { seat: 1 };
       view.render({ board, mySeats: [0], viewerSeat: 0, lastMove: { from, to, seat: 1 } });
     } else {
@@ -324,13 +330,10 @@ export function buildBasicsTour() {
     for (const [ids, text] of s.notes ?? []) annotate(svg, ids, text);
 
     svg.classList.toggle('is-win', !!s.win);
-    caption.innerHTML = s.text;
-    dots.textContent = `${i + 1} / ${STEPS.length}`;
     // 兩顆按鈕的狀態統一在這裡收尾。動畫途中會暫時停用，如果只在某一個分支裡解鎖，
     // 漏掉的那個分支就會讓「下一步」永遠按不下去（工兵走子那一步實際發生過）。
     prev.disabled = i === 0;
     next.disabled = false;
-    next.textContent = i === STEPS.length - 1 ? '再看一次' : '下一步 ›';
   };
   prev.addEventListener('click', () => { if (!busy && i > 0) { i--; draw(); } });
   next.addEventListener('click', () => { if (busy) return; i = i === STEPS.length - 1 ? 0 : i + 1; draw(); });

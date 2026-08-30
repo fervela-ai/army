@@ -431,6 +431,8 @@ body {
 
 /* 手機：棋盤壓低一點，讓說明文字與按鈕列跟圖同時看得到 */
 @media (max-width: 768px) {
-  .demo-board { max-height: 40vh; }
-  .demo-caption { font-size: 14px; }
+  /* 說明文字要看得舒服，高度就得從棋盤那邊借。
+     這兩個數字是配著量出來的：最長的那一頁（工兵轉彎）在 375x812 下剛好不用捲。 */
+  .demo-board { max-height: 32vh; }
+  .demo-caption { font-size: 16px; line-height: 1.7; }
 }

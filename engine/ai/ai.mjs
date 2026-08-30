@@ -90,7 +90,7 @@ const DEFAULT_W = {
   blockMate: 7,         // 停在隊友陣地的主幹道上會擋住他出兵
   campFromBack: 8,      // 用後兩排的棋子去佔行營要扣分（那些子在守家）
   campAfterLoss: 45,    // 自家行營旁邊剛折損棋子＝立刻去坐進去，別去報仇（Lynch）
-  openingCamp: 12,      // 開局前五步先佔行營（Lynch），後兩排的子不算
+  openingCamp: 16,      // 開局搶行營。順序靠 CAMP_PRIORITY 的比例決定，不是靠加大總分      // 開局前五步先佔行營（Lynch），後兩排的子不算
   bombInCamp: 30,       // 炸彈進駐自家門前行營＝Lynch 的防守骨架（安全、匿名、能反擊）
   frontCampHold: 26,    // 佔住自家軍旗前面的行營（Lynch：超級重要的據點，絕對不能不守）
   frontCampLeave: 20,   // 沒事不要離開門前的行營——空出來就是給對方踏板
@@ -408,6 +408,8 @@ export function engineerReasons(game, seat, memory, from, to) {
 
 export function scoreMove(game, seat, memory, { from, to }) {
   const w = wOf(memory);
+  // 開局階段（自己還沒走滿五步）。宣告放在最前面：底下好幾段都要用。
+  const opening = Math.floor((game.plies ?? 0) / 4) < 5;
 
   // 反震盪：把棋子走回它剛剛離開的格子，幾乎沒有意義，而且會卡成無限來回。
   // 實戰棋譜裡出現過連續 12 步在三個格子之間跳的工兵，就是少了這一條。
@@ -544,7 +546,9 @@ export function scoreMove(game, seat, memory, { from, to }) {
     // 行營是安全區，沒人吃得到它，而且沒人知道那顆是什麼——
     // 敵人吃掉旁邊的師長，炸彈就從行營出來反擊。
     // （佈陣時行營必須空著，所以這是開局後要走出來的陣型，不是擺出來的。）
-    else if ([`P${seat}-r4c2`, `P${seat}-r4c4`].includes(to) && kindOf(from) !== 'camp')
+    // 開局不做這件事：它獎勵的是 r4（靠自家那兩個），會跟「先佔前面」打架。
+    // 藏炸彈是中盤的防守骨架，不是開局第一件事（Lynch）。
+    else if (!opening && [`P${seat}-r4c2`, `P${seat}-r4c4`].includes(to) && kindOf(from) !== 'camp')
       score += w.bombInCamp;                  // 只有還沒進駐時才給，否則它會進進出出
     else score -= w.bombIdle / 2;      // 沒有夠格的目標就別動：推過去會被小兵解掉
 
@@ -733,9 +737,19 @@ export function scoreMove(game, seat, memory, { from, to }) {
   // ── 開局：前五步先把棋子走進行營（Lynch）─────────────────────
   // 行營是安全區，吃不到裡面的子。早早佔住＝白拿五個據點，而且逼對方繞路。
   // 但**不准動後兩排的子**——那些子在守家，而且一動就等於自曝不是地雷。
-  const myMoveCount = Math.floor((game.plies ?? 0) / 4);
-  if (myMoveCount < 5 && kindOf(to) === 'camp' && to.startsWith(`P${seat}-`)
-      && !/r[56]c/.test(from)) score += w.openingCamp;
+  // 佔領順序（Lynch）：**先前面兩個（r2）、再後面兩個（r4）、最後才是中間（r3c3）**。
+  // 後面的慢慢佔還來得及；前面的一旦被敵人坐進去就趕不走了（行營吃不到），
+  // 而且他從那裡隨時能出來吃你。
+  // ⚠ 這段先前寫過一次，被一批失敗的改動一起回退掉了——所以 Lynch 又看到它先佔後面。
+  // 前兩個（r2）佔滿之後，後兩個（r4）就接手變成主要目標，最後才是中間（Lynch）。
+  const frontTaken = [`P${seat}-r2c2`, `P${seat}-r2c4`]
+    .every(id => game.at.get(id)?.seat === seat);
+  const CAMP_PRIORITY = frontTaken
+    ? { r2c2: 1, r2c4: 1, r4c2: 1, r4c4: 1, r3c3: 0.3 }
+    : { r2c2: 1, r2c4: 1, r4c2: 0.15, r4c4: 0.15, r3c3: 0.05 };
+  const campKey = to.startsWith(`P${seat}-`) ? to.slice(to.indexOf('-') + 1) : null;
+  if (opening && kindOf(to) === 'camp' && campKey && !/r[56]c/.test(from))
+    score += w.openingCamp * (CAMP_PRIORITY[campKey] ?? 0.2);
 
   // ── 軍旗前面的行營＝超級重要的據點（Lynch）──────────────────
   // r4c2 / r4c4 正對著兩個大本營。敵人一旦站上去，防守會變極難：
@@ -744,7 +758,9 @@ export function scoreMove(game, seat, memory, { from, to }) {
   const frontCamps = [`P${seat}-r4c2`, `P${seat}-r4c4`];
   const mateSeat2 = [0, 1, 2, 3].find(x => x !== seat && TEAM_OF(x) === TEAM_OF(seat));
   const mateFrontCamps = mateSeat2 == null ? [] : [`P${mateSeat2}-r4c2`, `P${mateSeat2}-r4c4`];
-  if (frontCamps.includes(to)) score += w.frontCampHold;
+  // 開局階段不給這份獎勵：它獎勵的是 r4（靠自家那兩個），會把棋子往後拉，
+  // 跟「先佔前面」直接打架——Lynch 實戰回報「還是先佔領後面行營」就是這樣來的。
+  if (frontCamps.includes(to) && !opening) score += w.frontCampHold;
   else if (mateFrontCamps.includes(to)) score += w.frontCampHold * 0.5;   // 隊友門前也該幫忙補
   // 守在門前的子不要隨便離開——除非是去吃人
   if (frontCamps.includes(from) && !enemyTarget) score -= w.frontCampLeave;

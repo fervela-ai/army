@@ -428,6 +428,9 @@ body {
 /* 版本號：看得到就好，不要搶到標題前面 */
 .uiver { font-size: 11px; color: var(--ink-soft); letter-spacing: .04em;
   padding: 2px 6px; border: 1px solid var(--line-road); border-radius: 6px; }
+/* 有新版時才醒目，平常只是個不搶戲的版本號 */
+.uiver.is-stale { cursor: pointer; color: #fff; background: var(--seat-0);
+  border-color: var(--seat-0); font-weight: 600; }
 
 /* 手機：棋盤壓低一點，讓說明文字與按鈕列跟圖同時看得到 */
 @media (max-width: 768px) {

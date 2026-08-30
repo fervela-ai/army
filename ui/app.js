@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=144';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=144';
-import { localSession } from './session.js?v=144';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=144';
-import { buildGuide } from './guide.js?v=144';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=144';
-import { createBoardView } from './board.js?v=144';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=144';
+import { SEATS } from '../engine/src/board.mjs?v=146';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=146';
+import { localSession } from './session.js?v=146';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=146';
+import { buildGuide } from './guide.js?v=146';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=146';
+import { createBoardView } from './board.js?v=146';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=146';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,9 +24,28 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=144），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=146），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
+
+// 自己去看有沒有新版。GitHub Pages 給 index.html 的是 cache-control: max-age=600，
+// 所以推上去之後十分鐘內，回訪的人拿到的還是舊頁（Lynch：「我瀏覽器打開還是 V141」）。
+// 硬重整解得掉，但朋友不會知道要那樣做——讓頁面自己講。
+async function checkForUpdate() {
+  try {
+    const html = await (await fetch('index.html', { cache: 'no-store' })).text();
+    const latest = html.match(/app\.js\?v=(\d+)/)?.[1];
+    if (!latest || latest === UI_VERSION || !els.uiVer) return;
+    els.uiVer.textContent = `有新版 v${latest}・點我更新`;   // 手機的標題列很窄，寫短一點
+    els.uiVer.title = `目前 v${UI_VERSION}，最新 v${latest}`;
+    els.uiVer.classList.add('is-stale');
+    els.uiVer.addEventListener('click', () => {
+      // 帶一個變動的參數，繞過 index.html 那層快取
+      location.href = `${location.pathname}?v=${latest}`;
+    }, { once: true });
+  } catch { /* 離線或擋掉都無所謂，維持現狀就好 */ }
+}
+checkForUpdate();
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
 // 不再自己抱著整個房間——AI 之後要搬到伺服器，這裡就只換成 remoteSession。

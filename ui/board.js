@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=158';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=158';
-import { insignia } from './insignia.js?v=158';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=159';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=159';
+import { insignia } from './insignia.js?v=159';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -49,6 +49,7 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   const DRAG_MIN = 8;                 // 手指本來就會晃，太小會把點擊誤判成拖曳
   const pointers = new Map();
   let pinch = null;
+  let camCustom = false;              // 使用者自己兩指縮放過，就不要再被預設大小蓋掉
   const MIN_W = 200;                  // 再放大就只剩兩三格，看不到脈絡
 
   const applyCam = () => {
@@ -103,6 +104,7 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
       // 讓兩指中點壓著的那一點留在原地，縮放才不會亂飄
       cam.x = pinch.anchor.x - (pinch.screen.x - r.left) / r.width * cam.w;
       cam.y = pinch.anchor.y - (pinch.screen.y - r.top) / r.height * cam.h;
+      camCustom = true;
       applyCam();
       return;
     }
@@ -408,7 +410,12 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   // 所以一定要配一顆切回全盤的按鈕，不能只給放大。
   // 三段大小（Lynch 指定：大／中／小都要能拖曳平移）。
   // 'small' 是整盤，本來就裝得下所以拖不動；'mid'、'big' 都可以拖。
-  function setCamera(mode) {
+  // force=true 是使用者按了大／中／小，才可以覆蓋他自己縮放出來的大小。
+  // 每一步棋都會重畫，重畫時如果直接套回預設，玩家縮好的畫面就一直被拉回去
+  //（Lynch：「我雙指縮放後，請維持我要的大」）。
+  function setCamera(mode, force = false) {
+    if (!force && camCustom && cam) { syncCompact(); return; }
+    camCustom = false;
     if (mode !== 'seat' && mode !== 'mid' && mode !== 'big') {
       cam = null;
       svg.classList.remove('is-pannable');

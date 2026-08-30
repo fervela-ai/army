@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=149';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=149';
-import { insignia } from './insignia.js?v=149';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=151';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=151';
+import { insignia } from './insignia.js?v=151';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -146,7 +146,10 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   // 切換 → 版面微調 → 又觸發判斷，畫面看起來就是「一直放大縮小」（Lynch 實機回報）。
   let compact = false;
   function syncCompact() {
-    const cellPx = (svg.getBoundingClientRect().width || 0) / W * 42;
+    // 分母要用**目前的** viewBox 寬度，不是整盤的 W：鏡頭拉近時同樣的螢幕寬度
+    // 代表更大的格子，用 W 會算得太小，於是放大了文字還是被藏著。
+    const vw = Number(svg.getAttribute('viewBox').split(' ')[2]) || W;
+    const cellPx = (svg.getBoundingClientRect().width || 0) / vw * 42;
     if (!cellPx) return;
     if (!compact && cellPx < 26) compact = true;
     else if (compact && cellPx > 30) compact = false;
@@ -317,5 +320,28 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
     });
   }
 
-  return { render, animateMove, STEP_MS, setBottomSeat, get bottomSeat() { return bottomSeat; } };
+  // 鏡頭：'full' 是整個棋盤，'seat' 只框自己的陣地＋中央九宮。
+  // 手機上整盤縮到 375px 時，一顆棋只有 20px（實測），手指點不準；
+  // 只框自己那一區的話同一支手機上是 60px。代價是看不到另外兩家的細節，
+  // 所以一定要配一顆切回全盤的按鈕，不能只給放大。
+  function setCamera(mode) {
+    if (mode !== 'seat') { svg.setAttribute('viewBox', `0 0 ${W} ${H}`); syncCompact(); return; }
+    const mine = `P${bottomSeat}-`;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const n of svg.querySelectorAll('rect.node-hit')) {
+      const id = n.getAttribute('data-node');
+      if (!id.startsWith(mine) && !id.startsWith('M-')) continue;
+      const x = Number(n.getAttribute('x')), y = Number(n.getAttribute('y'));
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x + Number(n.getAttribute('width')));
+      y1 = Math.max(y1, y + Number(n.getAttribute('height')));
+    }
+    if (x0 > x1) return;
+    const pad = 18;
+    svg.setAttribute('viewBox', `${x0 - pad} ${y0 - pad} ${x1 - x0 + pad * 2} ${y1 - y0 + pad * 2}`);
+    syncCompact();                     // 格子變大了，文字要跟著回來
+  }
+
+  return { render, animateMove, STEP_MS, setBottomSeat, setCamera,
+    get bottomSeat() { return bottomSeat; } };
 }

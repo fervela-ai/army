@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=149';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=149';
-import { localSession } from './session.js?v=149';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=149';
-import { buildGuide } from './guide.js?v=149';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=149';
-import { createBoardView } from './board.js?v=149';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=149';
+import { SEATS } from '../engine/src/board.mjs?v=151';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=151';
+import { localSession } from './session.js?v=151';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=151';
+import { buildGuide } from './guide.js?v=151';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=151';
+import { createBoardView } from './board.js?v=151';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=151';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,7 +24,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=149），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=151），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -46,6 +46,21 @@ async function checkForUpdate() {
   } catch { /* 離線或擋掉都無所謂，維持現狀就好 */ }
 }
 checkForUpdate();
+
+// 手機棋盤放大：實驗中，只有網址帶 ?big=1 的人看得到，朋友的體驗不受影響。
+// 整盤縮到 375px 時一顆棋只有 20px，手指點不準；只框自己的陣地＋中央九宮是 60px。
+// 代價是看不到另外兩家的細節，所以一定要有一顆切回全盤的按鈕。
+const BIG_MODE = new URLSearchParams(location.search).get('big') === '1';
+let zoomOn = BIG_MODE;
+if (BIG_MODE) {
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.id = 'zoomToggle';
+  const label = () => { btn.textContent = zoomOn ? '看全盤' : '放大我這邊'; };
+  label();
+  btn.addEventListener('click', () => { zoomOn = !zoomOn; label(); refresh(); });
+  els.guide.before(btn);
+}
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
 // 不再自己抱著整個房間——AI 之後要搬到伺服器，這裡就只換成 remoteSession。
@@ -444,6 +459,7 @@ function refresh() {
     lastMove: inSetup ? null : lastMove,
     recentMoves: inSetup ? [] : recentMoves, viewerSeat: seat,
   });
+  view.setCamera(zoomOn ? 'seat' : 'full');
 
   if (inSetup) {
     els.setupWho.textContent = `${nameOf(setupSeat)} 佈陣中`;

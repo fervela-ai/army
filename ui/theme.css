@@ -131,7 +131,15 @@ body {
 .seat.is-ready .seat-note { color: var(--move-dot); }
 
 /* 棋子與軍階符號 */
-.piece-box { fill: var(--piece-fill); }
+/* 看得到身分的棋子：底色帶一點該家的顏色，跟米色棋盤拉開對比。
+   原本一律用近乎白色的 #f2f6f4，Lynch 實機回報「我方顏色有點淺，對比不足」。
+   ⚠ 暗棋（piece--hidden）的整塊實色規則在下面，選擇器更精確，不會被這條蓋掉。 */
+.piece-box { fill: var(--piece-fill); stroke-width: 3; }
+.piece--seat0 .piece-box { fill: #DFE9FC; }
+.piece--seat1 .piece-box { fill: #DFF1E4; }
+.piece--seat2 .piece-box { fill: #FBE7DA; }
+.piece--seat3 .piece-box { fill: #ECE2FA; }
+.piece-label { font-weight: 700; fill: var(--ink); }
 /* 暗棋填上各家的隊色，一眼分得出是哪一家（自己的棋子維持白底彩框） */
 .piece--hidden.piece--seat0 .piece-box { fill: var(--seat-0); }
 .piece--hidden.piece--seat1 .piece-box { fill: var(--seat-1); }

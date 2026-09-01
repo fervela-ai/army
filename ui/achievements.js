@@ -27,10 +27,10 @@ export const ACHIEVEMENTS = [
   // ── 以下是第二批（Lynch：「只有八個還是太少，也沒章法系統」）──
   // 分成四類，每類由淺入深，讓人看得出「還有什麼可以拚」：
   // 進攻、工兵、炸彈、收尾。
-  { id: 'doubleFlag', name: '雙旗英雄', desc: '同一局扛下兩面敵旗',
-    test: (s) => s.flagsTaken >= 2 },
+  { id: 'doubleFlag', name: '雙旗英雄', desc: '同一局親手扛下兩面敵旗',
+    test: (s) => (s.myFlagsTaken ?? 0) >= 2 },
   { id: 'firstFlag', name: '扛旗手', desc: '親手扛下一面敵旗',
-    test: (s) => s.flagsTaken >= 1 },
+    test: (s) => (s.myFlagsTaken ?? 0) >= 1 },
   { id: 'decapitate', name: '斬首', desc: '正面吃掉對方的司令或軍長（不是用炸彈）',
     test: (s) => s.topKills >= 1 },
   { id: 'sapperKing', name: '工兵之王', desc: '一局拆掉三顆地雷',
@@ -60,8 +60,11 @@ export const ACHIEVEMENTS = [
 export const TITLES = [
   { name: '常勝統帥', desc: '獲勝，出手八次以上而且勝率九成',
     test: (s, r) => r.win && s.attacks >= 8 && s.winRate >= 0.9 },
-  { name: '雙旗英雄', desc: '這局兩面敵旗都是你扛的',
-    test: (s) => s.flagsTaken >= 2 },
+  // ⚠ 用 myFlagsTaken（我自己扛的），不是 flagsTaken（我隊扛的）。
+  // 一開始寫成隊伍的數字，結果隊友扛的也算到我頭上——Lynch：「我沒有扛兩家，
+  // 但最後說我是雙旗英雄」。文案講「你扛的」，數字就必須是你扛的。
+  { name: '雙旗英雄', desc: '這局兩面敵旗都是你親手扛的',
+    test: (s) => (s.myFlagsTaken ?? 0) >= 2 },
   { name: '零封', desc: '獲勝，而且出手過但一顆子都沒陣亡',
     test: (s, r) => r.win && s.attacks >= 3 && s.lost === 0 },
   { name: '神算', desc: '出手五次以上，勝率八成以上',

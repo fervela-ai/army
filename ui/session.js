@@ -6,16 +6,16 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=177';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=177';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=178';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=178';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=177';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=177';
-import { VALUE } from '../engine/ai/lookahead.mjs?v=177';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=177';
-import { searchMove } from '../engine/ai/search.mjs?v=177';
+} from '../engine/src/room.mjs?v=178';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=178';
+import { VALUE } from '../engine/ai/lookahead.mjs?v=178';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=178';
+import { searchMove } from '../engine/ai/search.mjs?v=178';
 
 // controllers：四個座位分別由誰控制。'ai' 或玩家代號（'A'、'B'）。
 // 所有模式都只是這張表的不同填法——引擎那層本來就是用「座位→玩家」在跑的：
@@ -188,10 +188,11 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
       }
       // 給成就用的細項
       let minesDug = 0, bombsSpent = 0, myCommanderAlive = false;
-      let flagsTaken = 0, myFlagLost = false, topKills = 0;
+      let flagsTaken = 0, myFlagsTaken = 0, myFlagLost = false, topKills = 0;
       for (const m of record) {
         if (m.victim === '軍旗' && m.outcome === 'defenderDead') {
-          if (TEAM_OF(m.seat) === team) flagsTaken++;                 // 我方扛到的旗
+          if (TEAM_OF(m.seat) === team) flagsTaken++;                 // 我隊扛到的旗
+          if (m.seat === seat) myFlagsTaken++;                        // **我自己**扛到的旗
           else if (m.to?.startsWith(`P${seat}-`)) myFlagLost = true;  // 自己那面被扛
         }
         if (TEAM_OF(m.seat) !== team) continue;
@@ -208,7 +209,7 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
         alive, bySeat, attacks, won, traded, lost, minesDug, bombsSpent, myCommanderAlive,
         // Lynch：「同歸於盡應該算贏，因為不虧。」
         winRate: attacks ? (won + traded) / attacks : null,
-        bombBonus, bombKills, flagsTaken, myFlagLost, topKills,
+        bombBonus, bombKills, flagsTaken, myFlagsTaken, myFlagLost, topKills,
         plies: room.game?.plies ?? 0,
       };
     },

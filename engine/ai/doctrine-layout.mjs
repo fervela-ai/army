@@ -268,16 +268,25 @@ function laneGuard(layout, seat, rnd) {
     swap(donors[Math.floor(rnd() * donors.length)], spot[Math.floor(rnd() * spot.length)]);
   }
 
-  // 守在路上的如果是軍長或師長，旁邊要有炸彈接應（它們擋不住司令）
+  // 守在路上的如果是軍長或師長，要有炸彈接應（它們擋不住司令）。
+  // ⚠ 但不能每次都貼在旁邊。實測：84% 的炸彈緊貼大子，其中 687 次貼著師長，
+  // 「師長旁邊那顆就是炸彈」變成固定公式，對手拿中小子換掉就好——
+  // 120 局裡我方炸彈被碰掉 555 次，來碰的是團長 24%、師長 21%、旅長 15%、營長 15%，
+  // 真正值錢的軍長＋司令只有 10%。Lynch 一眼就問「是不是很多場都是 3＋B 的配置？」
+  // 所以一半的時候改放同一條路上但不相鄰的格子：鐵路是直線，一步就滑得到接應，
+  // 對手卻看不出這兩顆有關係。
   for (const col of [1, 5]) {
     const guard = cellsIn(col).find(x => layout[x] === '軍長' || layout[x] === '師長');
     if (!guard) continue;
     const near = [...(BOARD.adj.get(guard) ?? [])].filter(x => layout[x] != null);
     if (near.some(x => layout[x] === '炸彈')) continue;
     const bomb = Object.keys(layout).find(x => layout[x] === '炸彈');
-    const spot = near.find(x => canPut('炸彈', x) && canPut(layout[x], bomb)
+    if (!bomb) continue;
+    const sameLane = cellsIn(col).filter(x => x !== guard && !near.includes(x));
+    const pool = (rnd() < 0.5 && sameLane.length) ? sameLane : near;
+    const spot = pool.find(x => canPut('炸彈', x) && canPut(layout[x], bomb)
       && !TOP3.includes(layout[x]) && layout[x] !== '軍旗' && layout[x] !== '地雷');
-    if (bomb && spot) swap(bomb, spot);
+    if (spot) swap(bomb, spot);
   }
   return layout;
 }

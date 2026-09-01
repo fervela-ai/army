@@ -53,6 +53,7 @@ const DEFAULT_W = {
   engFlagRun: 30,       // 朝那顆護旗雷靠近的每一步（不給的話工兵走到一半就被別的分數帶走）
   engProbe: 6,
   engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
+  shieldMate: 10,       // 去隊友大子旁邊墊一手（炸彈與工兵不做這件事）
   laneDrain: 16,        // 守左右路的最後一顆大子跑去佔行營＝把大門讓出來
   bombCamp: 7,          // 炸彈躲進行營：跟工兵同一個道理——留著等對方大子出現才有價值
                         // （Lynch：「躲行營優先以工兵跟炸彈為主，但這不是鐵律。」
@@ -140,7 +141,7 @@ const wOf = (memory) => memory?.W ?? W;
 const JUDGEMENT_KEYS = [
   'bigAvoid', 'probeSmall', 'bombBig', 'bombMid', 'bombIdle', 'bombFear',
   'hqRush', 'hang', 'urgencyCapture', 'camp', 'campContested', 'smallVsBig', 'backRowProbe',
-  'bombCamp', 'laneDrain'];
+  'bombCamp', 'laneDrain', 'shieldMate'];
 
 // 產生一種「性格」：對這幾個判斷項各給一個 0.7~1.4 倍的偏好。
 // 鐵律不在此列——它們不是偏好問題。
@@ -154,6 +155,7 @@ export function makePersonality(base = W, rnd = Math.random) {
 }
 
 const isBackRow = (id) => /r[56]c/.test(id);
+const mateSeatOf = (seat) => [0, 1, 2, 3].find(x => x !== seat && TEAM_OF(x) === TEAM_OF(seat));
 
 // 地雷比較常出現在大本營附近，但**這只是傾向，不是定律**。
 // Lynch 的指正：「四國軍棋沒有所謂最好，不要把某種擺法當定律。」
@@ -412,22 +414,13 @@ export function engineerReasons(game, seat, memory, from, to) {
     return o && TEAM_OF(o.seat) === TEAM_OF(seat) && (PIECES[o.piece]?.rank ?? 0) >= 6;
   });
   const 拆地雷 = !!suspectMine || (deadly > 0 && !memory.notMine?.has(to));
-  // ⚠ 這條原本太鬆：只要隊友的**任何**棋子旁邊有**任何**敵人就算成立，
-  // 於是工兵動不動就飛出去「墊」。實戰 260901-ZSC 第 23 步，對家把工兵從安全點
-  // 飛到中央九宮，下一手就被排長吃掉——那一步唯一的「理由」就是這條。
-  // 原意是「隊友的**大子剛吃完人**、對方要出炸彈報復，派一顆便宜的去墊」，
-  // 所以三個條件都要成立：隊友那顆是大子、它剛動過（剛吃人）、旁邊真的有敵人。
-  const 擋炸彈 = mateSeat != null && neighbours(to).some(n => {
-    const o = game.at.get(n);
-    if (!o || o.seat !== mateSeat) return false;
-    if ((PIECES[o.piece]?.rank ?? 99) > 3) return false;          // 只為大子墊
-    const moved = (memory.ply ?? 0) - (memory.lastMovedPly?.get(n) ?? -99);
-    if (moved > 3) return false;                                   // 不是剛動過就不急
-    return neighbours(n).some(m => {
-      const e = game.at.get(m);
-      return e && TEAM_OF(e.seat) !== TEAM_OF(seat);
-    });
-  });
+  // 「幫隊友擋炸彈」這件事**不該用工兵做**（Lynch 2026-09-02）：
+  // 「擋人不是叫你拿工兵擋。工兵這樣叫送死。」
+  // 工兵是全隊唯一能拆雷的子，拿去當肉盾等於把整局的拆雷能力送掉。
+  // 先前只把條件收緊（大子、剛動過），實戰還是會看到工兵飛出去墊——整條拿掉才對。
+  // 墊的工作交給便宜的子（連長、排長），見 scoreMove 裡的 shieldMate。
+  const 擋炸彈 = false;
+
   // 逃命：現在站的地方會被吃，走開是正當理由。不給這條，工兵會呆在原地被白吃。
   const threats = memory.threats;
   const 逃命 = !!threats && (threats.get(from) ?? 0) > 0 && (threats.get(to) ?? 0) === 0;
@@ -501,6 +494,26 @@ export function scoreMove(game, seat, memory, { from, to }) {
   const hqPullScore = targetHQs.length
     ? -Math.min(...targetHQs.map(hq => dist(to, hq))) * w.hqPull : 0;   // 往還活著的敵方大本營推進
   let score = hqPullScore;
+
+  // 墊一手：隊友的大子剛吃完人，對方多半要出炸彈報復。派一顆便宜的子去它旁邊，
+  // 對方要炸就先炸到這顆——這是 Lynch 教的「擋炸彈」，但執行者必須是便宜的子，
+  // 不能是工兵（工兵是全隊唯一能拆雷的）。
+  // 誰去墊都行，只有炸彈和工兵不行（Lynch：「什麼子都可以，不要炸彈工兵就好。」）
+  // 那兩顆各有不可取代的用途：炸彈要留給對方的大子，工兵是全隊唯一能拆雷的。
+  if (rank > 0 && piece !== '工兵' && piece !== '炸彈' && mateSeatOf(seat) != null) {
+    const worth = [...(BOARD.adj.get(to) ?? [])].some(n => {
+      const o = game.at.get(n);
+      if (!o || o.seat !== mateSeatOf(seat)) return false;
+      if ((PIECES[o.piece]?.rank ?? 99) > 3) return false;
+      const moved = (memory.ply ?? 0) - (memory.lastMovedPly?.get(n) ?? -99);
+      if (moved > 3) return false;
+      return [...(BOARD.adj.get(n) ?? [])].some(m => {
+        const e = game.at.get(m);
+        return e && TEAM_OF(e.seat) !== TEAM_OF(seat);
+      });
+    });
+    if (worth) score += w.shieldMate;
+  }
 
   // 左右路不能被抽空（Lynch 2026-09-02）：「左右路進行營就會太空」
   // 「因為左路右路不要太空，讓敵人容易攻進來。」

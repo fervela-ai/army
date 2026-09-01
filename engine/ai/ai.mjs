@@ -50,6 +50,7 @@ const DEFAULT_W = {
   engIdleLate: 6,       // 殘局解禁
   engReveal: 12,        // 走出普通棋子做不到的彎＝自報身分
   engFlagMine: 200,     // 拆「緊鄰敵方大本營」的疑似地雷——工兵最重要的一件事
+  engFlagRun: 30,       // 朝那顆護旗雷靠近的每一步（不給的話工兵走到一半就被別的分數帶走）
   engProbe: 6,
   engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
   bombBig: 22,          // 炸彈換軍長以上
@@ -361,6 +362,20 @@ const flagThreats = (game, seat, flagNodes) => {
 // 工兵這一步有沒有「理由」。抽出來是為了讓模擬器能直接量「無意義的工兵移動」——
 // Lynch：「亂走就是走沒有意義的棋。」量不到就修不了。
 // 這四條就是 Lynch 指定的工兵鐵律（外加雙飛由呼叫端判斷）。
+// 「護旗雷」：緊鄰敵方大本營、而且已經被推斷是地雷的格子。
+// 那是通往軍旗的門閂，而且全場只有工兵拆得掉——這是工兵最重要的任務。
+// 只有「軍旗上方那一排（r5）緊鄰大本營」的雷才算數。
+// Lynch：「最後一排的地雷根本不重要。只有軍旗上面那幾格是優先拆雷的地方。」
+// 道理是進攻是從上面下來的：r6 的雷擋在軍旗左右，繞得過去；r5 的雷才是門閂。
+// 軍旗一旦顯露（司令陣亡），目標就只剩那一個大本營上方的那幾格。
+function flagMineTargets(game, seat, memory) {
+  const revealed = revealedFlagNodes(game, s => TEAM_OF(s) !== TEAM_OF(seat)).map(f => f.id);
+  const hqs = revealed.length ? revealed : enemyHQsUnexcluded_(game, seat, memory);
+  if (!hqs.length) return [];
+  return [...(memory.mineSuspect ?? [])]
+    .filter(id => /-r5c/.test(id) && hqs.some(hq => dist(id, hq) <= 1.5));
+}
+
 // 還可能是軍旗的敵方大本營（notFlag 已經證實不是的就排除）
 function enemyHQsUnexcluded_(game, seat, memory) {
   return enemyHQs(game, seat).filter(id => !memory.notFlag?.has(id));
@@ -478,16 +493,23 @@ export function scoreMove(game, seat, memory, { from, to }) {
     // 前瞻一步：走完這步之後，下一手能不能直接扛旗？
     // Lynch 實戰 260830-SFV：敵方「兩步內可扛旗」的機會出現 10 次（第 171 手就有了），
     // 卻拖到第 222 手才動手——因為原本只認「這一手就能扛」，看不到「兩步變一步」。
-    if (!game.at.has(to) || enemyTarget) {
-      const moved = game.at.get(from);
-      const occ = game.at.get(to);
-      game.at.delete(from); game.at.set(to, moved);
-      let setsUp = false;
-      try { setsUp = legalMoves(game, to).includes(flag.id); } catch { setsUp = false; }
-      game.at.delete(to); if (occ) game.at.set(to, occ); game.at.set(from, moved);
-      if (setsUp) score += w.flagSetup;
+    // ⚠ 工兵不吃「奪旗」這一類的分數（Lynch）：
+    // 「工兵的權重是拆雷，不是奪旗。牠的貢獻在拆雷後就結束了，別人一定會吃牠。」
+    // 給了的話，工兵會去搶「站到軍旗旁邊」那 +120，而不是去拆正上方那顆雷——
+    // 實戰 260901-SHW 看到的就是這個：工兵飛過來卻跳到軍旗左上、右上。
+    // （真的能一步扛旗還是要扛：上面 to === flag.id 直接回傳 Infinity。）
+    if (piece !== '工兵') {
+      if (!game.at.has(to) || enemyTarget) {
+        const moved = game.at.get(from);
+        const occ = game.at.get(to);
+        game.at.delete(from); game.at.set(to, moved);
+        let setsUp = false;
+        try { setsUp = legalMoves(game, to).includes(flag.id); } catch { setsUp = false; }
+        game.at.delete(to); if (occ) game.at.set(to, occ); game.at.set(from, moved);
+        if (setsUp) score += w.flagSetup;
+      }
+      score += Math.max(0, 14 - dist(to, flag.id)) * w.flagRush;
     }
-    score += Math.max(0, 14 - dist(to, flag.id)) * w.flagRush;
   }
   // 守旗：自己的軍旗要守，隊友的軍旗也要守——隊友見死不救的話，這隊等於只有一個人在打
   const myFlag = myFlagNode(game, seat);
@@ -528,8 +550,17 @@ export function scoreMove(game, seat, memory, { from, to }) {
     // 大本營的位置是公開的，所以「緊鄰敵方大本營的疑似地雷」不需要軍旗顯露就知道要拆。
     // 給的分要明顯高過「站到軍旗旁邊」（engThreat），否則工兵永遠選比較便宜的那個站位——
     // 實戰 260901-SHW 就是這樣：工兵飛過來卻跳到軍旗左上、右上，不去拆正上方那顆。
-    if (拆地雷 && enemyHQsUnexcluded_(game, seat, memory).some(hq => dist(to, hq) <= 1.5))
-      score += w.engFlagMine;
+    // 護旗雷一旦「露出來」（撞死過人、被推斷是地雷），工兵就必須過去拆——
+    // Lynch：「工兵不要亂飛，等大本營前的那顆子露出，就飛過去…有露出來、可以飛的工兵就必須飛。」
+    // 只給「拆到的那一步」重賞不夠：走過去要好幾手，中間那幾步沒有誘因就會被別的分數帶走
+    // （量到的護旗雷拆除率只有 9.2%）。所以整條路都要給分。
+    const flagMines = flagMineTargets(game, seat, memory);
+    if (flagMines.length) {
+      const near = (id) => Math.min(...flagMines.map(m => dist(id, m)));
+      const gain = near(from) - near(to);
+      if (gain > 0) score += gain * w.engFlagRun;      // 每靠近一步都有分，直到拆掉為止
+      if (flagMines.includes(to)) score += w.engFlagMine;
+    }
     // 工兵停在敵方軍旗旁不只是為了拆雷，更是威嚇（Lynch）：
     // 對方動後兩排來擋＝告訴我那顆不是地雷；不能吃我＝我直接賭贏；
     // 飛自己的工兵來解＝等於承認這裡是軍旗。怎麼回應都洩漏資訊。

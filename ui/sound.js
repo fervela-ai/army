@@ -12,6 +12,29 @@ const ac = () => {
   return ctx;
 };
 
+// iPad／iPhone 沒聲音的原因（Lynch 的兒子實機回報：音效有打勾卻完全沒聲音）：
+// iOS 的 WebAudio 只能在「使用者手勢的那一刻」被喚醒。我們的音效是在棋子移動時
+// 才第一次建立 AudioContext，那時候已經不在手勢裡了，iOS 就讓它一直停在 suspended，
+// 之後怎麼呼叫都不出聲。
+// 解法：任何一次點擊／觸控都去喚醒一次，而且第一次要真的播一段無聲的音訊才算解鎖。
+// 手勢每次都掛（不是 once）：iOS 從背景切回來會再次 suspend。
+let unlocked = false;
+const unlock = () => {
+  try {
+    const c = ac();
+    if (!unlocked) {
+      const src = c.createBufferSource();
+      src.buffer = c.createBuffer(1, 1, 22050);
+      src.connect(c.destination);
+      src.start(0);
+      unlocked = true;
+    }
+  } catch { /* 不支援就算了，遊戲照玩 */ }
+};
+if (typeof window !== 'undefined')
+  for (const t of ['pointerdown', 'touchend', 'keydown'])
+    window.addEventListener(t, unlock, { passive: true });
+
 function tone({ freq, dur = 0.12, type = 'sine', gain = 0.18, sweepTo = null, at = 0 }) {
   const c = ac(), t = c.currentTime + at;
   const osc = c.createOscillator(), g = c.createGain();

@@ -31,10 +31,30 @@ export function randomLayout(seat, rnd = Math.random) {
   const mines = PIECES.地雷.count - (spare === '地雷' ? 1 : 0);
   for (let i = 0; i < mines; i++) layout[take(free.filter(id => rowOf(id) >= 5))] = '地雷';
   for (let i = 0; i < PIECES.炸彈.count; i++) layout[take(free.filter(id => rowOf(id) !== 1))] = '炸彈';
+
+  // 工兵的位置也照心法擺（Lynch 2026-09-02：「隨機重排後，工兵怎麼會在 R1C1、R6C3
+  // 這種超爛位置？」）。同一套規則本來就該套用在玩家按的「隨機重排」上：
+  //   一隻放 r1c2 或 r1c4——敵方一步構不到（實測 0 個位置能吃到），要拆雷又隨時能飛；
+  //   其餘放第 2～4 排、不站左右路（c1／c5）——後兩排不能動會把工兵綁死，
+  //   站左右路容易被換掉，第一排的角落更是敵人整條鐵路滑過來就吃掉。
+  const colOf = id => Number(id.match(/c(\d)/)[1]);
+  const safeFront = free.filter(id => rowOf(id) === 1 && [2, 4].includes(colOf(id)));
+  if (safeFront.length) layout[take(safeFront)] = '工兵';
+  const inner = () => free.filter(id => rowOf(id) >= 2 && rowOf(id) <= 4
+    && colOf(id) >= 2 && colOf(id) <= 4);
+  while (Object.values(layout).filter(p => p === '工兵').length < PIECES.工兵.count) {
+    const pool = inner();
+    if (!pool.length) break;
+    layout[take(pool)] = '工兵';
+  }
+
   const rest = [];
   for (const [name, def] of Object.entries(PIECES)) {
     if (['軍旗', '地雷', '炸彈'].includes(name)) continue;
-    rest.push(...Array(def.count - (spare === name ? 1 : 0)).fill(name));
+    // ⚠ already 已經包含大本營那顆 spare 了，不可以再扣一次 spare——
+    //   重複扣會少放一顆（實測 400 份有 211 份「只有 24 子」）。
+    const already = Object.values(layout).filter(p => p === name).length;
+    rest.push(...Array(Math.max(0, def.count - already)).fill(name));
   }
   while (rest.length) layout[take([...free])] = pick(rest, rnd);
   return polish(layout, seat, rnd);
@@ -68,6 +88,13 @@ function polish(layout, seat, rnd) {
     if (piece === '軍旗') return false;
     if (piece === '地雷') return rowOf(id) >= 5;
     if (piece === '炸彈') return rowOf(id) !== 1;
+    // 工兵的位置限制也要寫在這裡：這個修正程序會隨機交換棋子，
+    // 不告訴它的話，前面照心法擺好的工兵會被換到左右路、後兩排、第一排角落
+    //（實測 400 份裡有 254 次被換到左右路）。
+    if (piece === '工兵') {
+      const r = rowOf(id), c = colOf(id);
+      return (r === 1 && (c === 2 || c === 4)) || (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+    }
     return true;
   };
 

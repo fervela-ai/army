@@ -53,6 +53,7 @@ const DEFAULT_W = {
   engFlagRun: 30,       // 朝那顆護旗雷靠近的每一步（不給的話工兵走到一半就被別的分數帶走）
   engProbe: 6,
   engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
+  laneDrain: 16,        // 守左右路的最後一顆大子跑去佔行營＝把大門讓出來
   bombCamp: 7,          // 炸彈躲進行營：跟工兵同一個道理——留著等對方大子出現才有價值
                         // （Lynch：「躲行營優先以工兵跟炸彈為主，但這不是鐵律。」
                         //   所以是權重不是禁令，而且會跟著性格抖動。）
@@ -139,7 +140,7 @@ const wOf = (memory) => memory?.W ?? W;
 const JUDGEMENT_KEYS = [
   'bigAvoid', 'probeSmall', 'bombBig', 'bombMid', 'bombIdle', 'bombFear',
   'hqRush', 'hang', 'urgencyCapture', 'camp', 'campContested', 'smallVsBig', 'backRowProbe',
-  'bombCamp'];
+  'bombCamp', 'laneDrain'];
 
 // 產生一種「性格」：對這幾個判斷項各給一個 0.7~1.4 倍的偏好。
 // 鐵律不在此列——它們不是偏好問題。
@@ -480,6 +481,21 @@ export function scoreMove(game, seat, memory, { from, to }) {
   const hqPullScore = targetHQs.length
     ? -Math.min(...targetHQs.map(hq => dist(to, hq))) * w.hqPull : 0;   // 往還活著的敵方大本營推進
   let score = hqPullScore;
+
+  // 左右路不能被抽空（Lynch 2026-09-02）：「左右路進行營就會太空」
+  // 「因為左路右路不要太空，讓敵人容易攻進來。」
+  // 兩側縱列是鐵路主幹道，敵人沿著它一路滑進來。守在那裡的大子跑去佔行營，
+  // 看起來賺了一個安全格，實際上是把大門讓出來。
+  // 只有「這條路上只剩它一顆大子」時才擋——路上還有人就不算抽空。
+  if (rank > 0 && rank <= 3 && BOARD.nodes.get(to)?.kind === 'camp') {
+    const lane = /-r\dc([15])$/.exec(from)?.[1];
+    if (lane && from.startsWith(`P${seat}-`)) {
+      const stillGuarded = [...game.at.entries()].some(([id, o]) =>
+        id !== from && o.seat === seat && id.startsWith(`P${seat}-r`) && id.endsWith(`c${lane}`)
+        && (PIECES[o.piece]?.rank ?? 0) > 0 && PIECES[o.piece].rank <= 3);
+      if (!stillGuarded) score -= w.laneDrain;
+    }
+  }
 
   // 炸彈躲行營：跟工兵同一個道理。炸彈只有在「對面的大子出現」時才有價值，
   // 在外面亂晃只會被小兵換掉。行營吃不到，等於把它冰起來等時機。

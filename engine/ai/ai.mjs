@@ -393,7 +393,19 @@ export function engineerReasons(game, seat, memory, from, to) {
   const mateSeat = [0, 1, 2, 3].find(x => x !== seat && TEAM_OF(x) === TEAM_OF(seat));
   const enemyHQsUnexcluded = enemyHQs(game, seat).filter(id => !memory.notFlag?.has(id));
 
-  const 賭三角雷 = enemyHQsUnexcluded.some(hq => dist(to, hq) <= 1.5);
+  // 隊友的工兵已經飛出去了，就不要再飛第二顆（Lynch 2026-09-02：
+  // 「對面兩家連續飛了工兵。應該要記得一個工兵飛了，就不會有另一家飛。」）
+  // 全隊只有六顆工兵，而且飛出去就自報身分。一顆在路上就夠了——
+  // 真正的「雙飛」是**第一顆被吃掉之後**再補一顆接應，不是兩家同時起飛。
+  // 隊友的工兵認得出來：它轉彎的那一步是公開資訊，記在 weakKnown 裡。
+  const mateEngineerOut = [...(memory.weakKnown ?? [])].some(([id, p]) => {
+    if (p !== '工兵') return false;
+    const o = game.at.get(id);
+    return o && o.seat !== seat && TEAM_OF(o.seat) === TEAM_OF(seat)
+      && !id.startsWith(`P${o.seat}-`);          // 已經離開自己家＝在路上
+  });
+
+  const 賭三角雷 = !mateEngineerOut && enemyHQsUnexcluded.some(hq => dist(to, hq) <= 1.5);
   const movedAgo = (memory.ply ?? 0) - (memory.lastMovedPly?.get(to) ?? -99);
   const 測炸彈 = !!target && movedAgo <= 3 && neighbours(to).some(n => {
     const o = game.at.get(n);
@@ -418,7 +430,7 @@ export function engineerReasons(game, seat, memory, from, to) {
   // 那顆工兵的每一步都變成「有理由」）。往敵人家去只在「賭三角雷」時成立。
   const goals = [...(memory.mineSuspect ?? [])];
   const near = (id) => (goals.length ? Math.min(...goals.map(g => dist(id, g))) : Infinity);
-  const 接近目標 = goals.length > 0 && near(to) < near(from);
+  const 接近目標 = !mateEngineerOut && goals.length > 0 && near(to) < near(from);
 
   // 讓路（Lynch）：工兵卡住自己人的出路時可以move開，但條件很嚴——
   //   「可以移動，但不要被吃，不要走到危險地方，不要轉彎，走路要像一般棋子，

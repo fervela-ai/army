@@ -11,10 +11,10 @@
 //
 // 順序也是 Lynch 定的：先棋盤 → 大本營 → 後兩排 → 邊佈陣邊講棋子 → 走子 → 怎麼贏。
 // 理由是新手第一屏就看到扛旗動畫，根本還不知道棋盤長什麼樣。
-import { createBoardView } from './board.js?v=166';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=166';
-import { legalMoves, movePath } from '../engine/src/rules.mjs?v=166';
-import { BOARD } from '../engine/src/board.mjs?v=166';
+import { createBoardView } from './board.js?v=167';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=167';
+import { legalMoves, movePath } from '../engine/src/rules.mjs?v=167';
+import { BOARD } from '../engine/src/board.mjs?v=167';
 
 const NS = 'http://www.w3.org/2000/svg';
 const L0 = referenceLayout(0);
@@ -91,8 +91,11 @@ const STEPS = [
   // 大本營的講法順序是 Lynch 指定的：先講軍旗放這裡 → 這就是勝負條件 → 最後才講進去不能出來。
   // 先講「進去不能動」的話，聽的人還不知道大本營是幹嘛的。
   { crop: 'seat0', at: () => setupAt(1), labels: ['大本營'],
-    text: '最下面那排有兩個<b>五角形</b>的格子，叫「大本營」。<b>你的軍旗一定放在其中一個</b>——'
-        + '這一局放在左邊那個。' },
+    // 不要用形狀來描述大本營：開局一擺滿棋子就看不到五角形了，要記的是位置。
+    // （Lynch：「一開始佈局就排好，所以大本營根本沒人看得到本壘板，重點反而是那兩個位置」）
+    text: '最下面那排的<b>第二格和第四格</b>叫「大本營」（現在空著，看得出形狀；'
+        + '開局擺滿棋子之後就看不到了，<b>記位置就好</b>）。'
+        + '<b>你的軍旗一定放在這兩格其中一個</b>——這一局放在左邊那格。' },
 
   { crop: 'seat0', at: () => setupAt(1), labels: ['大本營'],
     text: '<b>這就是整局的勝負條件</b>：敵人只要有<b>任何一顆</b>棋子碰到你的軍旗，你整家就出局；'

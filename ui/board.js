@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=166';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=166';
-import { insignia } from './insignia.js?v=166';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=167';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=167';
+import { insignia } from './insignia.js?v=167';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -81,7 +81,8 @@ function buildRefs(g) {
 
   // 右上：目標
   g.append(refText(556, 44, '怎麼贏', 'ref-h'));
-  ['你和對家一隊，', '拿下敵方兩家的軍旗就贏。', '', '軍旗在最下面一排', '五角形的「大本營」裡。']
+  // 用位置講，不要用形狀：開局擺滿之後看不到五角形（Lynch 指正）
+  ['你和對家一隊，', '拿下敵方兩家的軍旗就贏。', '', '軍旗在最下面那排的', '第二格或第四格（大本營）。']
     .forEach((line, i) => g.append(refText(556, 78 + i * 30, line)));
 
   // 右下：怎麼走

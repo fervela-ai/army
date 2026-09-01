@@ -467,3 +467,13 @@ body {
   background: #fff; border: 1px solid var(--line-road); border-radius: 8px; padding: 10px 12px;
   margin: 8px 0; user-select: text; }
 .gamecode { cursor: pointer; }
+
+/* 盤邊對照表：只在桌機看整盤時出現（由 board.js 加上 .has-refs） */
+.layer-refs { display: none; }
+.board.has-refs .layer-refs { display: block; }
+.ref-h { font-size: 17px; font-weight: 700; fill: var(--ink); }
+.ref-t { font-size: 15px; fill: var(--ink); }
+.ref-s { font-size: 13px; fill: var(--ink-soft); }
+.layer-refs .ins { opacity: .95; }
+
+.demo-play.is-on { background: var(--seat-0); border-color: var(--seat-0); color: #fff; }

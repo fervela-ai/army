@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=160';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=160';
-import { insignia } from './insignia.js?v=160';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=164';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=164';
+import { insignia } from './insignia.js?v=164';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -30,6 +30,51 @@ const railEdges = () => {
 };
 const isArcPair = (a, b) => ARCS.some(arc =>
   (arc.from === a && arc.to === b) || (arc.from === b && arc.to === a));
+
+// 盤邊對照表：內容都是「看圖就懂」的東西，字盡量少。
+const RANKS = ['司令', '軍長', '師長', '旅長', '團長', '營長', '連長', '排長', '工兵'];
+const SPECIALS = [
+  ['炸彈', '碰到誰都同歸於盡'],
+  ['地雷', '不會動，只有工兵拆得掉'],
+  ['軍旗', '被碰到就全家出局'],
+];
+
+function refText(x, y, str, cls = 'ref-t') {
+  const t = el('text', { x, y, class: cls });
+  t.textContent = str;
+  return t;
+}
+
+function buildRefs(g) {
+  // 左上：棋子大小
+  g.append(refText(24, 40, '棋子大小（大吃小）', 'ref-h'));
+  RANKS.forEach((name, i) => {
+    const y = 70 + i * 26;
+    const badge = el('g', { transform: `translate(38,${y - 5}) scale(0.62)` });
+    badge.appendChild(insignia(name));
+    g.append(badge, refText(58, y, name));
+  });
+  g.append(refText(24, 70 + RANKS.length * 26 + 4, '一樣大＝同歸於盡', 'ref-s'));
+
+  // 左下：特殊棋子
+  g.append(refText(24, 580, '特殊棋子', 'ref-h'));
+  SPECIALS.forEach(([name, note], i) => {
+    const y = 626 + i * 44;                 // 名稱一行、說明一行，行距要留得下兩行
+    const badge = el('g', { transform: `translate(38,${y - 5}) scale(0.62)` });
+    badge.appendChild(insignia(name));
+    g.append(badge, refText(58, y, name), refText(24, y + 18, note, 'ref-s'));
+  });
+
+  // 右上：目標
+  g.append(refText(560, 40, '怎麼贏', 'ref-h'));
+  ['你和對家一隊，', '拿下敵方兩家的軍旗', '就贏。', '', '軍旗在最下面一排', '五角形的「大本營」裡。']
+    .forEach((line, i) => g.append(refText(560, 70 + i * 24, line)));
+
+  // 右下：怎麼走
+  g.append(refText(560, 596, '怎麼走', 'ref-h'));
+  ['細線（公路）：走一格', '粗線（鐵路）：直線滑', '　　　　　　多格、不能轉彎', '只有工兵能任意轉彎', '紅圈是行營，裡面吃不到']
+    .forEach((line, i) => g.append(refText(560, 626 + i * 24, line)));
+}
 
 export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
@@ -59,6 +104,7 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
     cam.y = Math.min(Math.max(cam.y, 0), Math.max(0, H - cam.h));
     svg.setAttribute('viewBox', `${cam.x} ${cam.y} ${cam.w} ${cam.h}`);
     syncCompact();                    // 縮放到一定大小，棋子名稱自己回來
+    syncRefs();
   };
 
   // 兩指縮放：Lynch「或是我拖曳到某個大小，就自動有文字」——
@@ -147,6 +193,14 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
     fx: el('g', { class: 'layer-fx' }),
   };
   svg.replaceChildren(rotor);
+
+  // 棋盤是十字形，四個角落是空的。桌機上把那四塊拿來放對照表——
+  // 三位完全沒玩過的朋友回報「太難懂、記不住哪個是哪個」，而規則說明是要主動去點的，
+  // 放在盤邊才會在需要的時候被看到。（Lynch：「四國旁邊四個空地，放大小棋力說明」）
+  // 掛在 svg 而不是 rotor 底下：rotor 會跟著座位旋轉，文字跟著轉就看不懂了。
+  const refs = el('g', { class: 'layer-refs' });
+  buildRefs(refs);
+  svg.append(refs);
   Object.values(layers).forEach(l => rotor.appendChild(l));
 
   // 公路：不是鐵路的相鄰連線
@@ -229,6 +283,12 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   // 只用單一門檻的話，棋盤大小剛好卡在邊界時會來回切換——
   // 切換 → 版面微調 → 又觸發判斷，畫面看起來就是「一直放大縮小」（Lynch 實機回報）。
   let compact = false;
+  // 對照表只在「桌機＋看整盤」時出現：手機放不下，鏡頭拉近時角落根本不在畫面裡。
+  function syncRefs() {
+    const wide = (svg.getBoundingClientRect().width || 0) >= 620 && !cam;
+    svg.classList.toggle('has-refs', wide);
+  }
+
   function syncCompact() {
     // 分母要用**目前的** viewBox 寬度，不是整盤的 W：鏡頭拉近時同樣的螢幕寬度
     // 代表更大的格子，用 W 會算得太小，於是放大了文字還是被藏著。
@@ -244,13 +304,15 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   // 但下一步棋之前不會重畫，文字的顯示狀態會卡在舊的。
   // 兩種都掛，不要二選一：實測 ResizeObserver 在某些情況下不會觸發（視窗縮放模擬），
   // 只靠它就會卡在錯的狀態——57.9px 的大格子還在隱藏文字。
-  if (typeof ResizeObserver === 'function') new ResizeObserver(syncCompact).observe(svg);
-  window.addEventListener('resize', syncCompact);
-  window.addEventListener('orientationchange', () => setTimeout(syncCompact, 200));
-  requestAnimationFrame(syncCompact);      // 首次版面完成後再量一次
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { syncCompact(); syncRefs(); }).observe(svg);
+  const syncAll = () => { syncCompact(); syncRefs(); };
+  window.addEventListener('resize', syncAll);
+  window.addEventListener('orientationchange', () => setTimeout(syncAll, 200));
+  requestAnimationFrame(syncAll);          // 首次版面完成後再量一次
 
   function render({ board, mySeats = [], selected = null, moves = [], revealedFlags = [], lastMove = null, recentMoves = [], hide = [], viewerSeat = 0 }) {
     syncCompact();
+    syncRefs();
     layers.pieces.replaceChildren();
     layers.hints.replaceChildren();
     layers.marks.replaceChildren();
@@ -421,6 +483,7 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
       svg.classList.remove('is-pannable');
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
       syncCompact();
+      syncRefs();
       return;
     }
     const mine = `P${bottomSeat}-`;

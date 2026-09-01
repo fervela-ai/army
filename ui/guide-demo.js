@@ -11,10 +11,10 @@
 //
 // 順序也是 Lynch 定的：先棋盤 → 大本營 → 後兩排 → 邊佈陣邊講棋子 → 走子 → 怎麼贏。
 // 理由是新手第一屏就看到扛旗動畫，根本還不知道棋盤長什麼樣。
-import { createBoardView } from './board.js?v=160';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=160';
-import { legalMoves, movePath } from '../engine/src/rules.mjs?v=160';
-import { BOARD } from '../engine/src/board.mjs?v=160';
+import { createBoardView } from './board.js?v=164';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=164';
+import { legalMoves, movePath } from '../engine/src/rules.mjs?v=164';
+import { BOARD } from '../engine/src/board.mjs?v=164';
 
 const NS = 'http://www.w3.org/2000/svg';
 const L0 = referenceLayout(0);
@@ -268,14 +268,34 @@ export function buildBasicsTour() {
   bar.className = 'demo-bar';
   const prev = document.createElement('button');
   const next = document.createElement('button');
+  const play = document.createElement('button');
   const dots = document.createElement('span');
   prev.className = next.className = 'btn demo-btn';
+  play.className = 'btn demo-btn demo-play';
   prev.textContent = '上一步';
+  play.textContent = '▶ 自動播放';
   dots.className = 'demo-dots';
-  bar.append(prev, dots, next);
+  bar.append(play, prev, dots, next);
   wrap.append(caption, bar);
 
+  // 「自動播放」＝不用一直按的版本。三個完全沒玩過的朋友都說看不懂、記不住，
+  // 而他們要的其實是「先讓我看一遍怎麼玩」——那就是一段影片的功能。
+  // 用現成的流程自己跑完，比錄影片好：字還在、可以隨時停下來自己按。
   let i = 0, busy = false;
+  let playing = false, timer = null;
+  const dwell = (text) => Math.min(9000, 2400 + text.replace(/<[^>]+>/g, '').length * 95);
+  const stop = () => {
+    playing = false;
+    clearTimeout(timer);
+    play.textContent = '▶ 自動播放';
+    play.classList.remove('is-on');
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    if (!playing) return;
+    if (i === STEPS.length - 1) { stop(); return; }
+    timer = setTimeout(() => { if (!playing) return; i++; draw(); }, dwell(STEPS[i].text));
+  };
   const draw = async () => {
     const s = STEPS[i];
     // 說明文字先換，動畫後播：不然動畫在跑的時候，畫面上還是上一步的字，
@@ -334,9 +354,17 @@ export function buildBasicsTour() {
     // 漏掉的那個分支就會讓「下一步」永遠按不下去（工兵走子那一步實際發生過）。
     prev.disabled = i === 0;
     next.disabled = false;
+    schedule();                        // 自動播放時，這一步看完就換下一步
   };
-  prev.addEventListener('click', () => { if (!busy && i > 0) { i--; draw(); } });
-  next.addEventListener('click', () => { if (busy) return; i = i === STEPS.length - 1 ? 0 : i + 1; draw(); });
+  prev.addEventListener('click', () => { stop(); if (!busy && i > 0) { i--; draw(); } });
+  next.addEventListener('click', () => { stop(); if (busy) return; i = i === STEPS.length - 1 ? 0 : i + 1; draw(); });
+  play.addEventListener('click', () => {
+    if (playing) { stop(); return; }
+    playing = true;
+    play.textContent = '❚❚ 暫停';
+    play.classList.add('is-on');
+    if (i === STEPS.length - 1) { i = 0; draw(); } else schedule();
+  });
   draw();
   return wrap;
 }

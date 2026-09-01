@@ -480,9 +480,3 @@ body {
 
 .demo-play.is-on { background: var(--seat-0); border-color: var(--seat-0); color: #fff; }
 
-/* 選到棋子的說明：桌機已經畫在盤邊空地，所以那時候不重複顯示這一行 */
-.piecehint { margin: 10px auto 0; max-width: 640px; padding: 10px 14px; border-radius: 10px;
-  background: var(--panel-bg); border: 1px solid var(--line-road);
-  font-size: 15px; line-height: 1.6; text-align: center; }
-.piecehint[hidden] { display: none; }
-.stage:has(.board.has-refs) .piecehint { display: none; }

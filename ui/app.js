@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=168';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=168';
-import { localSession } from './session.js?v=168';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=168';
-import { buildGuide } from './guide.js?v=168';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=168';
-import { createBoardView } from './board.js?v=168';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=168';
+import { SEATS } from '../engine/src/board.mjs?v=169';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=169';
+import { localSession } from './session.js?v=169';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=169';
+import { buildGuide } from './guide.js?v=169';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=169';
+import { createBoardView } from './board.js?v=169';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=169';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -20,11 +20,11 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'pieceHint']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=168），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=169），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -527,14 +527,11 @@ function refresh() {
   });
   view.setCamera(BIG_MODE ? ZOOMS[zoomLevel][1] : 'full');
 
-  // 選到自己的棋子就介紹它（看不到身分的敵子當然沒有）
+  // 選到自己的棋子就介紹它（看不到身分的敵子當然沒有）。
+  // 只畫在桌機的盤邊空地。手機版試過在棋盤下方加一行，但那一行一出現就把整個版面往下推——
+  // Lynch 實機回報「一按我的棋子就跳畫面」，體驗比沒有還差，所以手機不做。
   const selPiece = selected ? board?.at?.[selected]?.piece ?? null : null;
   view.setInfo(selPiece ? { piece: selPiece, lines: pieceBrief(selPiece) } : null);
-  if (els.pieceHint) {
-    els.pieceHint.hidden = !selPiece;
-    if (selPiece) els.pieceHint.innerHTML =
-      `<b>${selPiece}</b>　${pieceBrief(selPiece).join('　·　')}`;
-  }
 
   if (inSetup) {
     els.setupWho.textContent = `${nameOf(setupSeat)} 佈陣中`;

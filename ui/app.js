@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=159';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=159';
-import { localSession } from './session.js?v=159';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=159';
-import { buildGuide } from './guide.js?v=159';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=159';
-import { createBoardView } from './board.js?v=159';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=159';
+import { SEATS } from '../engine/src/board.mjs?v=160';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=160';
+import { localSession } from './session.js?v=160';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=160';
+import { buildGuide } from './guide.js?v=160';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=160';
+import { createBoardView } from './board.js?v=160';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=160';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,7 +24,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=159），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=160），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -125,13 +125,18 @@ function askNickname() {
     input.className = 'modal-input';
     input.placeholder = '例如：老王、阿明';
     input.maxLength = 12;
+    // 第一眼先講這是什麼、可以馬上玩，再問代稱。
+    // 一進站就要人填名字、還馬上提「用來改進電腦棋力」，看起來像在收資料（外部回饋）。
+    const lead = document.createElement('div');
+    lead.className = 'modal-lead';
+    lead.textContent = '四人兩隊的暗棋，你和對家一組，打三家電腦。取個代稱就可以開始。';
     const note = document.createElement('div');
     note.className = 'modal-note';
     // 說清楚會留下什麼。朋友有權知道自己打的字會被存起來。
-    note.textContent = '代稱會跟你的棋譜一起存起來，用來改進電腦的棋力。請不要用真名。';
-    wrap.append(input, note);
+    note.textContent = '代稱會跟這局的棋譜一起存起來，只用來看棋局怎麼下的。請不要用真名。';
+    wrap.append(lead, input, note);
     showModal({
-      title: '你怎麼稱呼？',
+      title: '四國軍棋　試玩版',
       body: wrap,
       actions: [{
         label: '開始', primary: true, onClick: () => {
@@ -919,6 +924,32 @@ function openGuide() {
   place(bar);            // showModal 會重建動作列，所以要再放一次
 }
 els.guide.addEventListener('click', openGuide);
+
+// 回報問題的入口。畫面上叫人「回報時附上代號」，卻沒有地方可以回報（外部回饋指出）。
+// 不做表單也不收信箱：把該附的東西湊好、一鍵複製，傳給邀請他來玩的人就行。
+function openReport() {
+  const wrap = document.createElement('div');
+  const p = (t) => { const e = document.createElement('p'); e.textContent = t; return e; };
+  const info = `對局代號 ${gameCode}　版本 v${UI_VERSION}`;
+  const box = document.createElement('div');
+  box.className = 'report-code';
+  box.textContent = info;
+  wrap.append(
+    p('遇到怪怪的地方？把下面這行、加上你看到的情況（最好附一張截圖），傳給找你來玩的人就可以了。'),
+    box,
+    p('這兩個東西是我們對得上是哪一局、哪一版的唯一線索，沒有它們很難查。'),
+  );
+  showModal({
+    title: '回報問題',
+    body: wrap,
+    actions: [
+      { label: '複製', onClick: () => { navigator.clipboard?.writeText(info); box.textContent = '已複製　' + info; } },
+      { label: '關閉', primary: true, onClick: closeModal },
+    ],
+  });
+}
+els.gameCode.addEventListener('click', openReport);
+els.gameCode.title = '點一下：回報問題要附的資訊';
 
 // 音效試聽：每個事件都有幾種版本，聽了直接選。選擇存在瀏覽器裡。
 const SFX_EVENTS = [

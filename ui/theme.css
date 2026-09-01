@@ -461,3 +461,9 @@ body {
   /* 手機：左右留白吃掉太多寬度，統計表會被擠到換行 */
   .overlay-card { padding: 24px 18px; min-width: 0; width: 100%; }
 }
+
+.modal-lead { font-size: 15px; line-height: 1.7; margin-bottom: 10px; }
+.report-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;
+  background: #fff; border: 1px solid var(--line-road); border-radius: 8px; padding: 10px 12px;
+  margin: 8px 0; user-select: text; }
+.gamecode { cursor: pointer; }

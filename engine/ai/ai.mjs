@@ -53,6 +53,9 @@ const DEFAULT_W = {
   engFlagRun: 30,       // 朝那顆護旗雷靠近的每一步（不給的話工兵走到一半就被別的分數帶走）
   engProbe: 6,
   engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
+  bombCamp: 7,          // 炸彈躲進行營：跟工兵同一個道理——留著等對方大子出現才有價值
+                        // （Lynch：「躲行營優先以工兵跟炸彈為主，但這不是鐵律。」
+                        //   所以是權重不是禁令，而且會跟著性格抖動。）
   bombBig: 22,          // 炸彈換軍長以上
   bombMid: 20,          // 炸彈換師長級
   bombIdle: 12,
@@ -136,7 +139,7 @@ const wOf = (memory) => memory?.W ?? W;
 const JUDGEMENT_KEYS = [
   'bigAvoid', 'probeSmall', 'bombBig', 'bombMid', 'bombIdle', 'bombFear',
   'hqRush', 'hang', 'urgencyCapture', 'camp', 'campContested', 'smallVsBig', 'backRowProbe',
-];
+  'bombCamp'];
 
 // 產生一種「性格」：對這幾個判斷項各給一個 0.7~1.4 倍的偏好。
 // 鐵律不在此列——它們不是偏好問題。
@@ -477,6 +480,11 @@ export function scoreMove(game, seat, memory, { from, to }) {
   const hqPullScore = targetHQs.length
     ? -Math.min(...targetHQs.map(hq => dist(to, hq))) * w.hqPull : 0;   // 往還活著的敵方大本營推進
   let score = hqPullScore;
+
+  // 炸彈躲行營：跟工兵同一個道理。炸彈只有在「對面的大子出現」時才有價值，
+  // 在外面亂晃只會被小兵換掉。行營吃不到，等於把它冰起來等時機。
+  if (piece === '炸彈' && BOARD.nodes.get(to)?.kind === 'camp' && !game.at.has(to))
+    score += w.bombCamp;
 
   // 死亡格：那一格吃過我方的子。**記整場，不設時效**（Lynch）——
   // 真人不會因為過了十手就忘記「那裡吃掉我兩顆工兵」。死越多次越要避

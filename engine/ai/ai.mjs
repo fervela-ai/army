@@ -49,6 +49,7 @@ const DEFAULT_W = {
   engIdleEarly: 40,     // 工兵沒任務時不准亂動（開局）
   engIdleLate: 6,       // 殘局解禁
   engReveal: 12,        // 走出普通棋子做不到的彎＝自報身分
+  engFlagMine: 200,     // 拆「緊鄰敵方大本營」的疑似地雷——工兵最重要的一件事
   engProbe: 6,
   engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
   bombBig: 22,          // 炸彈換軍長以上
@@ -210,7 +211,12 @@ export function observe(memory, events) {
     if (survivorMoves) memory.lastMovedPly.set(e.to, memory.ply);
     memory.lastMovedPly.delete(e.from);
 
-    memory.moved.add(e.to);
+    // ⚠ 只有真的有棋子「走進」終點才算動過。
+    // 攻擊方陣亡時守方動都沒動——把它記成 moved 會直接毀掉整套地雷推斷：
+    // 下面那行 `!memory.moved.has(e.to)` 就永遠是 false，mineSuspect 從頭到尾是空的。
+    // 實測：155 次非工兵撞雷，攻方記憶裡標成疑似地雷的是 0 次。
+    // 一顆護旗雷因此吃掉五顆子（Lynch 的兒子那局 260901-SHW）。
+    if (e.outcome === 'moved' || e.outcome === 'defenderDead') memory.moved.add(e.to);
     memory.moved.delete(e.from);
     // 地雷永遠不會移動，所以只要有棋子走進這一格，它就絕對不是地雷。
     // 少了這條，AI 會拿工兵去「拆」一顆剛走過來的旅長（Lynch 實戰抓到）。
@@ -355,6 +361,11 @@ const flagThreats = (game, seat, flagNodes) => {
 // 工兵這一步有沒有「理由」。抽出來是為了讓模擬器能直接量「無意義的工兵移動」——
 // Lynch：「亂走就是走沒有意義的棋。」量不到就修不了。
 // 這四條就是 Lynch 指定的工兵鐵律（外加雙飛由呼叫端判斷）。
+// 還可能是軍旗的敵方大本營（notFlag 已經證實不是的就排除）
+function enemyHQsUnexcluded_(game, seat, memory) {
+  return enemyHQs(game, seat).filter(id => !memory.notFlag?.has(id));
+}
+
 export function engineerReasons(game, seat, memory, from, to) {
   const target = game.at.get(to);
   const neighbours = (id) => [...(BOARD.adj.get(id) ?? [])];
@@ -437,6 +448,15 @@ export function scoreMove(game, seat, memory, { from, to }) {
   const bigThreat = memory.bigThreat?.get(to) ?? 0;
   const revenge = memory.revenge?.get(to) ?? 0;
 
+  // ── 鐵律（Lynch 2026-09-02）：推斷出來是地雷的格子，除了工兵誰都不准碰 ──
+  // 「如果很大的子撞死可能是地雷的，那就要當作那個子是地雷，不可以亂撞。
+  //   死了 3 結果他還送 1、4、5 去根本不合理。我說死 3 就要用 1 吃，講的是人，不是地雷。」
+  // 這條必須放在所有加分之前：實戰 260901-SHW 裡同一顆護旗雷吃掉五顆子
+  // （師長、司令、師長、旅長、團長），原因就是「下一手就能扛旗」給 +120，
+  // 而撞死過人的懲罰只有約 26——每死一顆反而更想去死一次。
+  // 撞地雷沒有任何上檔空間：不是機率問題，是純虧。
+  if (enemyTarget && suspectMine && piece !== '工兵' && piece !== '炸彈') return -Infinity;
+
   const targetHQs = enemyHQs(game, seat);
   // 兩家都扛完就贏了，不會走到這裡；保險起見空陣列時不給推進分。
   const hqPullScore = targetHQs.length
@@ -503,6 +523,13 @@ export function scoreMove(game, seat, memory, { from, to }) {
     if (!有理由 && !(走法像普通棋子 && 待在自家)) return -Infinity;
 
     if (拆地雷) score += w.engProbe * Math.max(0.5, minePrior(to)) + 14;
+    // 護旗雷優先（Lynch）：「工兵要優先拆軍旗正上方的地雷，有空檔就要做，
+    // 這要很優先，就算死了也是重大成果。」
+    // 大本營的位置是公開的，所以「緊鄰敵方大本營的疑似地雷」不需要軍旗顯露就知道要拆。
+    // 給的分要明顯高過「站到軍旗旁邊」（engThreat），否則工兵永遠選比較便宜的那個站位——
+    // 實戰 260901-SHW 就是這樣：工兵飛過來卻跳到軍旗左上、右上，不去拆正上方那顆。
+    if (拆地雷 && enemyHQsUnexcluded_(game, seat, memory).some(hq => dist(to, hq) <= 1.5))
+      score += w.engFlagMine;
     // 工兵停在敵方軍旗旁不只是為了拆雷，更是威嚇（Lynch）：
     // 對方動後兩排來擋＝告訴我那顆不是地雷；不能吃我＝我直接賭贏；
     // 飛自己的工兵來解＝等於承認這裡是軍旗。怎麼回應都洩漏資訊。

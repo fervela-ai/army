@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=169';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=169';
-import { insignia } from './insignia.js?v=169';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=170';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=170';
+import { insignia } from './insignia.js?v=170';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -63,7 +63,13 @@ function buildInfo(g, info) {
   const badge = el('g', { transform: 'translate(42,574) scale(1.05)' });
   badge.appendChild(insignia(info.piece));
   g.append(badge, refText(66, 582, info.piece, 'ref-h'));
-  info.lines.forEach((line, i) => g.append(refText(24, 630 + i * 32, line, i === 0 ? 'ref-t' : 'ref-s')));
+  // 角落只有約 250 單位寬，放大字之後一行塞不下 13 個中文字——
+  // 不折行就會整句伸到棋盤上（Lynch：「左下角的字壓到棋盤了」）。
+  const wrapped = [];
+  info.lines.forEach((line, i) => {
+    for (let k = 0; k < line.length; k += 12) wrapped.push([line.slice(k, k + 12), i]);
+  });
+  wrapped.forEach(([line, i], k) => g.append(refText(24, 626 + k * 30, line, i === 0 ? 'ref-t' : 'ref-s')));
 }
 
 function buildRefs(g) {

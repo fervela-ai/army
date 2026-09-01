@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=169';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=169';
-import { localSession } from './session.js?v=169';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=169';
-import { buildGuide } from './guide.js?v=169';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=169';
-import { createBoardView } from './board.js?v=169';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=169';
+import { SEATS } from '../engine/src/board.mjs?v=170';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=170';
+import { localSession } from './session.js?v=170';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=170';
+import { buildGuide } from './guide.js?v=170';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=170';
+import { createBoardView } from './board.js?v=170';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=170';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,7 +24,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=169），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=170），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -497,10 +497,10 @@ window.addEventListener('keydown', (e) => { if (e.key === 'Escape') clearSelecti
 // 三位新手的共同回饋：記不住九個軍階，點下去卻沒有任何提示，不知道自己在動哪隻兵。
 const RANK_ORDER = ['司令', '軍長', '師長', '旅長', '團長', '營長', '連長', '排長', '工兵'];
 function pieceBrief(piece) {
-  if (piece === '炸彈') return ['碰到誰都同歸於盡，連司令也一起帶走', '所以它是拿來換掉對方大子的', '限制：不能放在第一排'];
+  if (piece === '炸彈') return ['碰到誰都同歸於盡', '連司令也一起帶走，所以拿來換大子', '不能放在第一排'];
   if (piece === '地雷') return ['不能移動', '任何軍人撞上去都會陣亡', '只有工兵拆得掉'];
   if (piece === '軍旗') return ['不能移動', '被敵人碰到，你整家就出局', '所以要用地雷擋住通往它的路'];
-  if (piece === '工兵') return ['最小的軍人，碰到誰都輸', '但全場只有它拆得掉地雷', '在鐵路上可以任意轉彎——一轉彎，全場就知道它是工兵'];
+  if (piece === '工兵') return ['最小的軍人，碰到誰都輸', '但全場只有它拆得掉地雷', '鐵路上可以任意轉彎', '（一轉彎就會被看出是工兵）'];
   const i = RANK_ORDER.indexOf(piece);
   if (i < 0) return [];
   const below = RANK_ORDER[i + 1];

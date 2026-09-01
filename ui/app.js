@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=167';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=167';
-import { localSession } from './session.js?v=167';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=167';
-import { buildGuide } from './guide.js?v=167';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=167';
-import { createBoardView } from './board.js?v=167';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=167';
+import { SEATS } from '../engine/src/board.mjs?v=168';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=168';
+import { localSession } from './session.js?v=168';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=168';
+import { buildGuide } from './guide.js?v=168';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=168';
+import { createBoardView } from './board.js?v=168';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=168';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,7 +24,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=167），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=168），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -248,7 +248,26 @@ function hint(text, isError = false) {
 }
 
 // ---- 佈陣 ----
+// 大本營只放軍旗、地雷或排長——跟自動佈陣同一條規則。
+// 規則上其他棋子放得進去，但進去就永遠不能動，等於當場報廢一顆。
+// Lynch：「為什麼不讓他點的時候就不能點進去？」——能擋就不要事後問，
+// 而且擋下來的時候要說原因，不然玩家只會覺得「怎麼點不動」。
+const HQ_OK = ['軍旗', '地雷', '排長'];
+const isHQ = (id) => /-r6c[24]$/.test(id);
+function hqBlocked(a, b) {
+  for (const [from, to] of [[a, b], [b, a]]) {
+    const piece = myLayout[from];
+    if (isHQ(to) && piece && !HQ_OK.includes(piece)) return piece;
+  }
+  return null;
+}
+
 async function trySwap(a, b) {
+  const blocked = hqBlocked(a, b);
+  if (blocked) {
+    hint(`大本營不能放${blocked}——走進大本營的棋子就再也不能動了，只放軍旗、地雷或排長`, true);
+    return false;
+  }
   const r = await session.swap(setupSeat, a, b);
   if (!r.ok) { hint(r.error, true); return false; }
   myLayout = await session.layout(setupSeat);

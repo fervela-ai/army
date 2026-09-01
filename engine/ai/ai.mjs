@@ -412,9 +412,17 @@ export function engineerReasons(game, seat, memory, from, to) {
     return o && TEAM_OF(o.seat) === TEAM_OF(seat) && (PIECES[o.piece]?.rank ?? 0) >= 6;
   });
   const 拆地雷 = !!suspectMine || (deadly > 0 && !memory.notMine?.has(to));
+  // ⚠ 這條原本太鬆：只要隊友的**任何**棋子旁邊有**任何**敵人就算成立，
+  // 於是工兵動不動就飛出去「墊」。實戰 260901-ZSC 第 23 步，對家把工兵從安全點
+  // 飛到中央九宮，下一手就被排長吃掉——那一步唯一的「理由」就是這條。
+  // 原意是「隊友的**大子剛吃完人**、對方要出炸彈報復，派一顆便宜的去墊」，
+  // 所以三個條件都要成立：隊友那顆是大子、它剛動過（剛吃人）、旁邊真的有敵人。
   const 擋炸彈 = mateSeat != null && neighbours(to).some(n => {
     const o = game.at.get(n);
     if (!o || o.seat !== mateSeat) return false;
+    if ((PIECES[o.piece]?.rank ?? 99) > 3) return false;          // 只為大子墊
+    const moved = (memory.ply ?? 0) - (memory.lastMovedPly?.get(n) ?? -99);
+    if (moved > 3) return false;                                   // 不是剛動過就不急
     return neighbours(n).some(m => {
       const e = game.at.get(m);
       return e && TEAM_OF(e.seat) !== TEAM_OF(seat);

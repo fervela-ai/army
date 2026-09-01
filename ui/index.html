@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋（試玩版）</title>
-<link rel="stylesheet" href="theme.css?v=164">
+<link rel="stylesheet" href="theme.css?v=165">
 </head>
 <body>
 <div class="app">
@@ -52,6 +52,8 @@
 
   <main class="stage">
     <svg class="board" id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+    <!-- 選到棋子時的說明。桌機是畫在盤邊空地（board.js），這一行是給放不下對照表的螢幕看的 -->
+    <div class="piecehint" id="pieceHint" hidden></div>
   </main>
 
   <div class="modal" id="modal" hidden>
@@ -82,6 +84,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=164"></script>
+<script type="module" src="app.js?v=165"></script>
 </body>
 </html>

@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=164';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=164';
-import { localSession } from './session.js?v=164';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=164';
-import { buildGuide } from './guide.js?v=164';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=164';
-import { createBoardView } from './board.js?v=164';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=164';
+import { SEATS } from '../engine/src/board.mjs?v=165';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=165';
+import { localSession } from './session.js?v=165';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=165';
+import { buildGuide } from './guide.js?v=165';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=165';
+import { createBoardView } from './board.js?v=165';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=165';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -20,11 +20,11 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'pieceHint']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=164），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=165），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -474,6 +474,25 @@ els.board.addEventListener('pointerdown', (e) => {
 });
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') clearSelection(); });
 
+// 選到一顆棋子時，用白話講它「吃得到誰、怕誰」。
+// 三位新手的共同回饋：記不住九個軍階，點下去卻沒有任何提示，不知道自己在動哪隻兵。
+const RANK_ORDER = ['司令', '軍長', '師長', '旅長', '團長', '營長', '連長', '排長', '工兵'];
+function pieceBrief(piece) {
+  if (piece === '炸彈') return ['碰到誰都同歸於盡，連司令也一起帶走', '所以它是拿來換掉對方大子的', '限制：不能放在第一排'];
+  if (piece === '地雷') return ['不能移動', '任何軍人撞上去都會陣亡', '只有工兵拆得掉'];
+  if (piece === '軍旗') return ['不能移動', '被敵人碰到，你整家就出局', '所以要用地雷擋住通往它的路'];
+  if (piece === '工兵') return ['最小的軍人，碰到誰都輸', '但全場只有它拆得掉地雷', '在鐵路上可以任意轉彎——一轉彎，全場就知道它是工兵'];
+  const i = RANK_ORDER.indexOf(piece);
+  if (i < 0) return [];
+  const below = RANK_ORDER[i + 1];
+  const above = RANK_ORDER[i - 1];
+  return [
+    below ? `吃得到 ${below} 以下的軍人` : '吃不贏任何軍人',
+    above ? `怕 ${above} 以上、還有炸彈和地雷` : '誰都吃得到，只怕炸彈和地雷',
+    `碰到同樣是 ${piece} 就同歸於盡`,
+  ];
+}
+
 function refresh() {
   const inSetup = S.status === 'setup';
   const seat = viewSeat();
@@ -488,6 +507,15 @@ function refresh() {
     recentMoves: inSetup ? [] : recentMoves, viewerSeat: seat,
   });
   view.setCamera(BIG_MODE ? ZOOMS[zoomLevel][1] : 'full');
+
+  // 選到自己的棋子就介紹它（看不到身分的敵子當然沒有）
+  const selPiece = selected ? board?.at?.[selected]?.piece ?? null : null;
+  view.setInfo(selPiece ? { piece: selPiece, lines: pieceBrief(selPiece) } : null);
+  if (els.pieceHint) {
+    els.pieceHint.hidden = !selPiece;
+    if (selPiece) els.pieceHint.innerHTML =
+      `<b>${selPiece}</b>　${pieceBrief(selPiece).join('　·　')}`;
+  }
 
   if (inSetup) {
     els.setupWho.textContent = `${nameOf(setupSeat)} 佈陣中`;

@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=164';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=164';
-import { insignia } from './insignia.js?v=164';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=165';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=165';
+import { insignia } from './insignia.js?v=165';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -45,6 +45,27 @@ function refText(x, y, str, cls = 'ref-t') {
   return t;
 }
 
+// 左下角那塊平常放「特殊棋子」，選到自己的棋子時換成那顆棋子的說明——
+// 三位新手都提到「點選的時候有功能介紹會比較知道自己在動哪隻兵」。
+// 換內容而不是另外找位置：盤邊只有這四塊空地，而選棋當下最需要的是這一則。
+function buildInfo(g, info) {
+  g.replaceChildren();
+  if (!info) {
+    g.append(refText(24, 580, '特殊棋子', 'ref-h'));
+    SPECIALS.forEach(([name, note], i) => {
+      const y = 626 + i * 44;
+      const badge = el('g', { transform: `translate(38,${y - 5}) scale(0.62)` });
+      badge.appendChild(insignia(name));
+      g.append(badge, refText(58, y, name), refText(24, y + 18, note, 'ref-s'));
+    });
+    return;
+  }
+  const badge = el('g', { transform: 'translate(40,574) scale(0.95)' });
+  badge.appendChild(insignia(info.piece));
+  g.append(badge, refText(66, 582, info.piece, 'ref-h'));
+  info.lines.forEach((line, i) => g.append(refText(24, 624 + i * 26, line, i === 0 ? 'ref-t' : 'ref-s')));
+}
+
 function buildRefs(g) {
   // 左上：棋子大小
   g.append(refText(24, 40, '棋子大小（大吃小）', 'ref-h'));
@@ -55,15 +76,6 @@ function buildRefs(g) {
     g.append(badge, refText(58, y, name));
   });
   g.append(refText(24, 70 + RANKS.length * 26 + 4, '一樣大＝同歸於盡', 'ref-s'));
-
-  // 左下：特殊棋子
-  g.append(refText(24, 580, '特殊棋子', 'ref-h'));
-  SPECIALS.forEach(([name, note], i) => {
-    const y = 626 + i * 44;                 // 名稱一行、說明一行，行距要留得下兩行
-    const badge = el('g', { transform: `translate(38,${y - 5}) scale(0.62)` });
-    badge.appendChild(insignia(name));
-    g.append(badge, refText(58, y, name), refText(24, y + 18, note, 'ref-s'));
-  });
 
   // 右上：目標
   g.append(refText(560, 40, '怎麼贏', 'ref-h'));
@@ -199,7 +211,10 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
   // 放在盤邊才會在需要的時候被看到。（Lynch：「四國旁邊四個空地，放大小棋力說明」）
   // 掛在 svg 而不是 rotor 底下：rotor 會跟著座位旋轉，文字跟著轉就看不懂了。
   const refs = el('g', { class: 'layer-refs' });
+  const infoG = el('g', { class: 'ref-info' });
   buildRefs(refs);
+  buildInfo(infoG, null);
+  refs.append(infoG);
   svg.append(refs);
   Object.values(layers).forEach(l => rotor.appendChild(l));
 
@@ -514,6 +529,9 @@ export function createBoardView(svg, { onNodeClick, onPointerUp }) {
     applyCam();
   }
 
-  return { render, animateMove, STEP_MS, setBottomSeat, setCamera,
+  // info: { piece, lines } 或 null（沒選子時回到「特殊棋子」）
+  function setInfo(info) { buildInfo(infoG, info); }
+
+  return { render, animateMove, STEP_MS, setBottomSeat, setCamera, setInfo,
     get bottomSeat() { return bottomSeat; } };
 }

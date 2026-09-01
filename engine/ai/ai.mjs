@@ -41,6 +41,13 @@ export function createMemory(seat = null, weights = null, rnd = null) {
 // 改由程式跑幾百局對打來決定數值。改動請附上量測結果，不要憑感覺。
 const DEFAULT_W = {
   hqPull: 0.6,          // 往敵方大本營推進
+  // 集中打同一家：共同目標由公開資訊算出，兩個隊友算得到同一家，不需要溝通就同步。
+  // 量測（隊友＝會下棋的人，1500 局）：關掉勝 391、打開勝 601；
+  // 整體棋力 600 局新舊對打 65.9%、綜合 63.2%、扛旗 833 vs 575。
+  // 8 是最佳點（3→綜合 56.8%、8→62.7%、20→62.1%）。
+  // ⚠ 預設 0（關閉）：Lynch 要先自己玩過再決定要不要給所有人。
+  //   用網址 ?focus=8 打開（見 ui/app.js）。
+  focusPull: 0,
   flagRush: 12,        // 追已顯露的敵方軍旗
   flagDefend: 3.0,      // 守自己的軍旗
   mateFlagDefend: 2.2,  // 守隊友的軍旗
@@ -125,8 +132,14 @@ const DEFAULT_W = {
 // 自我對弈調出來的權重會覆寫預設值。整夜跑 sim/tune.mjs 之後，這裡自動生效。
 // 量測用：W_OVERRIDE='{"urgencyCapture":40}' 可以臨時蓋掉權重，跑 A/B 不用改檔案。
 // （改檔案跑實驗很容易忘記改回來，這個開關就是為了避免那件事。）
+// 瀏覽器裡也要能蓋掉權重：新的棋路要先讓 Lynch 自己玩過再決定要不要給所有人。
+// 網頁那邊用網址參數設定 globalThis.__AI_W__（見 ui/app.js），這裡讀它。
 const OVERRIDE = (() => {
-  try { return JSON.parse(globalThis.process?.env?.W_OVERRIDE ?? '{}'); } catch { return {}; }
+  try {
+    const env = JSON.parse(globalThis.process?.env?.W_OVERRIDE ?? '{}');
+    const web = globalThis.__AI_W__ ?? {};
+    return { ...env, ...web };
+  } catch { return {}; }
 })();
 
 export const W = { ...DEFAULT_W, ...TUNED, ...OVERRIDE };
@@ -141,7 +154,7 @@ const wOf = (memory) => memory?.W ?? W;
 const JUDGEMENT_KEYS = [
   'bigAvoid', 'probeSmall', 'bombBig', 'bombMid', 'bombIdle', 'bombFear',
   'hqRush', 'hang', 'urgencyCapture', 'camp', 'campContested', 'smallVsBig', 'backRowProbe',
-  'bombCamp', 'laneDrain', 'shieldMate'];
+  'bombCamp', 'laneDrain', 'shieldMate', 'focusPull'];
 
 // 產生一種「性格」：對這幾個判斷項各給一個 0.7~1.4 倍的偏好。
 // 鐵律不在此列——它們不是偏好問題。
@@ -383,6 +396,19 @@ function flagMineTargets(game, seat, memory) {
 }
 
 // 還可能是軍旗的敵方大本營（notFlag 已經證實不是的就排除）
+// 共同目標：兩個隊友各自算，但因為都只用公開資訊，算出來會是同一家——
+// 不需要溝通就同步了（我方看不到隊友的棋，但「盤上還剩幾顆」是大家都看得到的）。
+// 為什麼要集中：扛掉一家會把那家**所有**棋子一次清掉，是全局最大的一次收益；
+// 各打各的等於把力量分成兩半，兩邊都打不穿。
+// 選最弱的那家（剩最少子），平手時取座位編號小的——兩邊的決策才會一致。
+function focusSeatOf(game, seat) {
+  const foes = [0, 1, 2, 3].filter(s => TEAM_OF(s) !== TEAM_OF(seat) && !game.eliminated.has(s));
+  if (foes.length <= 1) return foes[0] ?? null;
+  const count = new Map(foes.map(s => [s, 0]));
+  for (const [, o] of game.at) if (count.has(o.seat)) count.set(o.seat, count.get(o.seat) + 1);
+  return foes.slice().sort((a, b) => (count.get(a) - count.get(b)) || (a - b))[0];
+}
+
 function enemyHQsUnexcluded_(game, seat, memory) {
   return enemyHQs(game, seat).filter(id => !memory.notFlag?.has(id));
 }
@@ -493,47 +519,14 @@ export function scoreMove(game, seat, memory, { from, to }) {
   // 兩家都扛完就贏了，不會走到這裡；保險起見空陣列時不給推進分。
   const hqPullScore = targetHQs.length
     ? -Math.min(...targetHQs.map(hq => dist(to, hq))) * w.hqPull : 0;   // 往還活著的敵方大本營推進
-  let score = hqPullScore;
 
-  // 墊一手：隊友的大子剛吃完人，對方多半要出炸彈報復。派一顆便宜的子去它旁邊，
-  // 對方要炸就先炸到這顆——這是 Lynch 教的「擋炸彈」，但執行者必須是便宜的子，
-  // 不能是工兵（工兵是全隊唯一能拆雷的）。
-  // 誰去墊都行，只有炸彈和工兵不行（Lynch：「什麼子都可以，不要炸彈工兵就好。」）
-  // 那兩顆各有不可取代的用途：炸彈要留給對方的大子，工兵是全隊唯一能拆雷的。
-  if (rank > 0 && piece !== '工兵' && piece !== '炸彈' && mateSeatOf(seat) != null) {
-    const worth = [...(BOARD.adj.get(to) ?? [])].some(n => {
-      const o = game.at.get(n);
-      if (!o || o.seat !== mateSeatOf(seat)) return false;
-      if ((PIECES[o.piece]?.rank ?? 99) > 3) return false;
-      const moved = (memory.ply ?? 0) - (memory.lastMovedPly?.get(n) ?? -99);
-      if (moved > 3) return false;
-      return [...(BOARD.adj.get(n) ?? [])].some(m => {
-        const e = game.at.get(m);
-        return e && TEAM_OF(e.seat) !== TEAM_OF(seat);
-      });
-    });
-    if (worth) score += w.shieldMate;
-  }
+  // 往「共同目標」那一家再加一份推力（集中兵力）。
+  // 不取代原本的推進分：完全只打一家會讓另一家在背後為所欲為。
+  const focus = focusSeatOf(game, seat);
+  const focusScore = focus == null ? 0
+    : Math.max(0, 14 - Math.min(dist(to, `P${focus}-r6c2`), dist(to, `P${focus}-r6c4`))) * w.focusPull;
 
-  // 左右路不能被抽空（Lynch 2026-09-02）：「左右路進行營就會太空」
-  // 「因為左路右路不要太空，讓敵人容易攻進來。」
-  // 兩側縱列是鐵路主幹道，敵人沿著它一路滑進來。守在那裡的大子跑去佔行營，
-  // 看起來賺了一個安全格，實際上是把大門讓出來。
-  // 只有「這條路上只剩它一顆大子」時才擋——路上還有人就不算抽空。
-  if (rank > 0 && rank <= 3 && BOARD.nodes.get(to)?.kind === 'camp') {
-    const lane = /-r\dc([15])$/.exec(from)?.[1];
-    if (lane && from.startsWith(`P${seat}-`)) {
-      const stillGuarded = [...game.at.entries()].some(([id, o]) =>
-        id !== from && o.seat === seat && id.startsWith(`P${seat}-r`) && id.endsWith(`c${lane}`)
-        && (PIECES[o.piece]?.rank ?? 0) > 0 && PIECES[o.piece].rank <= 3);
-      if (!stillGuarded) score -= w.laneDrain;
-    }
-  }
-
-  // 炸彈躲行營：跟工兵同一個道理。炸彈只有在「對面的大子出現」時才有價值，
-  // 在外面亂晃只會被小兵換掉。行營吃不到，等於把它冰起來等時機。
-  if (piece === '炸彈' && BOARD.nodes.get(to)?.kind === 'camp' && !game.at.has(to))
-    score += w.bombCamp;
+  let score = hqPullScore + focusScore;
 
   // 死亡格：那一格吃過我方的子。**記整場，不設時效**（Lynch）——
   // 真人不會因為過了十手就忘記「那裡吃掉我兩顆工兵」。死越多次越要避

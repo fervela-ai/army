@@ -4,9 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋（試玩版）</title>
-<link rel="stylesheet" href="theme.css?v=179">
+<link rel="stylesheet" href="theme.css?v=180">
 </head>
 <body>
+<!-- 實驗中的棋路開關：用網址參數打開，預設關閉，朋友不受影響。
+     例：?focus=8 ＝「集中打同一家」（量測見 engine/ai/ai.mjs 的 focusPull）。
+     ⚠ 一定要放在這裡、用普通 script：模組（type=module）是延後執行的，
+        寫在 app.js 裡會來不及——ai.mjs 在載入當下就讀走這個值了。 -->
+<script>
+  (function () {
+    var f = Number(new URLSearchParams(location.search).get('focus'));
+    if (isFinite(f) && f > 0) globalThis.__AI_W__ = { focusPull: f };
+  })();
+</script>
 <div class="app">
   <header class="topbar">
     <h1 class="title">四國軍棋</h1>
@@ -82,6 +92,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=179"></script>
+<script type="module" src="app.js?v=180"></script>
 </body>
 </html>

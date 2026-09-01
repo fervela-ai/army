@@ -6,16 +6,16 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=174';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=174';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=175';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=175';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=174';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=174';
-import { VALUE } from '../engine/ai/lookahead.mjs?v=174';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=174';
-import { searchMove } from '../engine/ai/search.mjs?v=174';
+} from '../engine/src/room.mjs?v=175';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=175';
+import { VALUE } from '../engine/ai/lookahead.mjs?v=175';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=175';
+import { searchMove } from '../engine/ai/search.mjs?v=175';
 
 // controllers：四個座位分別由誰控制。'ai' 或玩家代號（'A'、'B'）。
 // 所有模式都只是這張表的不同填法——引擎那層本來就是用「座位→玩家」在跑的：
@@ -188,10 +188,18 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
       }
       // 給成就用的細項
       let minesDug = 0, bombsSpent = 0, myCommanderAlive = false;
+      let flagsTaken = 0, myFlagLost = false, topKills = 0;
       for (const m of record) {
+        if (m.victim === '軍旗' && m.outcome === 'defenderDead') {
+          if (TEAM_OF(m.seat) === team) flagsTaken++;                 // 我方扛到的旗
+          else if (m.to?.startsWith(`P${seat}-`)) myFlagLost = true;  // 自己那面被扛
+        }
         if (TEAM_OF(m.seat) !== team) continue;
         if (m.piece === '工兵' && m.victim === '地雷' && m.outcome === 'defenderDead') minesDug++;
         if (m.piece === '炸彈' && m.outcome === 'bothDead') bombsSpent++;
+        // 吃掉對方的司令／軍長（不含炸彈換的，那是 bombBonus）
+        if (m.outcome === 'defenderDead' && m.piece !== '炸彈'
+            && (m.victim === '司令' || m.victim === '軍長')) topKills++;
       }
       if (room.game) for (const [, o] of room.game.at)
         if (o.seat === seat && o.piece === '司令') myCommanderAlive = true;
@@ -200,7 +208,7 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
         alive, bySeat, attacks, won, traded, lost, minesDug, bombsSpent, myCommanderAlive,
         // Lynch：「同歸於盡應該算贏，因為不虧。」
         winRate: attacks ? (won + traded) / attacks : null,
-        bombBonus, bombKills,
+        bombBonus, bombKills, flagsTaken, myFlagLost, topKills,
         plies: room.game?.plies ?? 0,
       };
     },

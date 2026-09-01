@@ -480,3 +480,11 @@ body {
 
 .demo-play.is-on { background: var(--seat-0); border-color: var(--seat-0); color: #fff; }
 
+
+/* 這一局的頭銜：結算畫面最上面，要一眼看到 */
+.title-card { text-align: center; padding: 14px 12px 12px; margin-bottom: 10px;
+  border-radius: 14px; background: linear-gradient(180deg, #FFF6E0, var(--panel-bg));
+  border: 1px solid var(--rank-star); }
+.title-name { font-size: 26px; font-weight: 800; letter-spacing: .08em; color: var(--rank-star); }
+.title-desc { font-size: 14px; color: var(--ink-soft); margin-top: 4px; }
+.title-streak { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--seat-0); }

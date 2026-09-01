@@ -1,14 +1,14 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=174';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=174';
-import { localSession } from './session.js?v=174';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=174';
-import { buildGuide } from './guide.js?v=174';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds } from './achievements.js?v=174';
-import { createBoardView } from './board.js?v=174';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=174';
+import { SEATS } from '../engine/src/board.mjs?v=175';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=175';
+import { localSession } from './session.js?v=175';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=175';
+import { buildGuide } from './guide.js?v=175';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=175';
+import { createBoardView } from './board.js?v=175';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=175';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,7 +24,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=174），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=175），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -707,8 +707,34 @@ async function showStats() {
     box.append(cap, t);
   }
 
+  const res = { win: S.result?.type === 'win' && S.result.team === 0 };
+
+  // 這一局的頭銜：每局都有，講「你這局打得怎麼樣」。
+  // 成就是收集（拿過就不再跳），頭銜是即時評語——Lynch 要的是後者
+  //（「這場我勝率 86% 真的是超級高的」，那種當下就想被認可的感覺）。
+  const run = noteGame(res);
+  const title = titleFor(st, res);
+  if (title) {
+    const tw = document.createElement('div');
+    tw.className = 'title-card';
+    const n = document.createElement('div');
+    n.className = 'title-name';
+    n.textContent = title.name;
+    const d = document.createElement('div');
+    d.className = 'title-desc';
+    d.textContent = title.desc;
+    tw.append(n, d);
+    if (run.streak >= 2) {
+      const st2 = document.createElement('div');
+      st2.className = 'title-streak';
+      st2.textContent = `連勝 ${run.streak} 場`;
+      tw.append(st2);
+    }
+    box.prepend(tw);
+  }
+
   // 新解鎖的成就：只跳沒拿過的，拿過的第二次就沒有感覺了
-  const fresh = checkAchievements(st, { win: S.result?.type === 'win' && S.result.team === 0 });
+  const fresh = checkAchievements(st, res, run);
   if (fresh.length) {
     const wrap = document.createElement('div');
     wrap.className = 'ach';

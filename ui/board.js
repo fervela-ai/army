@@ -1,9 +1,9 @@
 // 棋盤渲染：把 129 個點位、鐵路、公路、弧線與棋子畫成 SVG。
 // ⚠ 這裡只負責「畫」與「回報點擊」，不含任何遊戲規則；規則一律在 engine/ 裡。
 // class 名稱是與 theme.css 的契約，改樣式請動 theme.css，不要改這裡的結構。
-import { BOARD, SEATS } from '../engine/src/board.mjs?v=165';
-import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=165';
-import { insignia } from './insignia.js?v=165';
+import { BOARD, SEATS } from '../engine/src/board.mjs?v=166';
+import { GEOMETRY, ARCS, BOUNDS, nodeXY } from '../engine/src/geometry.mjs?v=166';
+import { insignia } from './insignia.js?v=166';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
@@ -60,32 +60,34 @@ function buildInfo(g, info) {
     });
     return;
   }
-  const badge = el('g', { transform: 'translate(40,574) scale(0.95)' });
+  const badge = el('g', { transform: 'translate(42,574) scale(1.05)' });
   badge.appendChild(insignia(info.piece));
   g.append(badge, refText(66, 582, info.piece, 'ref-h'));
-  info.lines.forEach((line, i) => g.append(refText(24, 624 + i * 26, line, i === 0 ? 'ref-t' : 'ref-s')));
+  info.lines.forEach((line, i) => g.append(refText(24, 630 + i * 32, line, i === 0 ? 'ref-t' : 'ref-s')));
 }
 
 function buildRefs(g) {
-  // 左上：棋子大小
+  // 左上：棋子大小。排成兩欄——字放大之後單欄會一路撞到左邊那家的陣地。
   g.append(refText(24, 40, '棋子大小（大吃小）', 'ref-h'));
   RANKS.forEach((name, i) => {
-    const y = 70 + i * 26;
-    const badge = el('g', { transform: `translate(38,${y - 5}) scale(0.62)` });
+    const col = i < 5 ? 0 : 1;
+    const y = 76 + (i % 5) * 34;
+    const x = 24 + col * 130;
+    const badge = el('g', { transform: `translate(${x + 14},${y - 6}) scale(0.72)` });
     badge.appendChild(insignia(name));
-    g.append(badge, refText(58, y, name));
+    g.append(badge, refText(x + 36, y, name));
   });
-  g.append(refText(24, 70 + RANKS.length * 26 + 4, '一樣大＝同歸於盡', 'ref-s'));
+  g.append(refText(24, 76 + 5 * 34 + 6, '一樣大＝同歸於盡', 'ref-s'));
 
   // 右上：目標
-  g.append(refText(560, 40, '怎麼贏', 'ref-h'));
-  ['你和對家一隊，', '拿下敵方兩家的軍旗', '就贏。', '', '軍旗在最下面一排', '五角形的「大本營」裡。']
-    .forEach((line, i) => g.append(refText(560, 70 + i * 24, line)));
+  g.append(refText(556, 44, '怎麼贏', 'ref-h'));
+  ['你和對家一隊，', '拿下敵方兩家的軍旗就贏。', '', '軍旗在最下面一排', '五角形的「大本營」裡。']
+    .forEach((line, i) => g.append(refText(556, 78 + i * 30, line)));
 
   // 右下：怎麼走
-  g.append(refText(560, 596, '怎麼走', 'ref-h'));
-  ['細線（公路）：走一格', '粗線（鐵路）：直線滑', '　　　　　　多格、不能轉彎', '只有工兵能任意轉彎', '紅圈是行營，裡面吃不到']
-    .forEach((line, i) => g.append(refText(560, 626 + i * 24, line)));
+  g.append(refText(556, 596, '怎麼走', 'ref-h'));
+  ['細線（公路）：走一格', '粗線（鐵路）：直線滑多格、', '　　　　　　不能轉彎', '只有工兵能任意轉彎', '紅圈是行營，裡面吃不到']
+    .forEach((line, i) => g.append(refText(556, 630 + i * 30, line)));
 }
 
 export function createBoardView(svg, { onNodeClick, onPointerUp }) {

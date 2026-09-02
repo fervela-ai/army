@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=183';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=183';
-import { localSession } from './session.js?v=183';
-import { remoteSession } from './remote-session.js?v=183';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=183';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=183';
-import { buildGuide } from './guide.js?v=183';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=183';
-import { createBoardView } from './board.js?v=183';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=183';
+import { SEATS } from '../engine/src/board.mjs?v=184';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=184';
+import { localSession } from './session.js?v=184';
+import { remoteSession } from './remote-session.js?v=184';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=184';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=184';
+import { buildGuide } from './guide.js?v=184';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=184';
+import { createBoardView } from './board.js?v=184';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=184';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -26,7 +26,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=183），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=184），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 

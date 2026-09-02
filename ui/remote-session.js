@@ -8,10 +8,11 @@
 //   remoteSession：伺服器說了算，這裡只是把動作送出去、把推回來的狀態存起來。
 // 所以這裡不做任何「先假裝走了」的樂觀更新——暗棋一旦前後端狀態不一致，
 // 玩家會看到自己的棋子跳回去，比慢半秒難受得多。
-import { SEATS } from '../engine/src/board.mjs?v=183';
-import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=183';
-import { GAME_WS } from './config.js?v=183';
-import { ensureAccount } from './account.js?v=183';
+import { SEATS } from '../engine/src/board.mjs?v=184';
+import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=184';
+import { GAME_WS } from './config.js?v=184';
+import { ensureAccount } from './account.js?v=184';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=184';
 
 export async function remoteSession({ code, nickname, onState, onError } = {}) {
   const acc = await ensureAccount();
@@ -42,6 +43,11 @@ export async function remoteSession({ code, nickname, onState, onError } = {}) {
     // （玩家正在拖曳，不能被伺服器推來的預設陣型蓋掉）。
     for (const [seat, layout] of Object.entries(state.yourLayouts ?? {}))
       draft[seat] ??= { ...layout };
+    // ⚠ 伺服器沒給我的陣型時，自己先生一份——不然佈陣畫面上一顆棋子都沒有，
+    //    玩家完全動不了（實際踩過：Worker 版本較舊，yourLayouts 是空的）。
+    //    這不是猜伺服器的狀態：按下「確定佈陣」時送出去的本來就是這份草稿，送出即為準。
+    if (state.status === 'setup')
+      for (const seat of state.you?.seats ?? []) draft[seat] ??= randomLayout(seat);
     while (waiters.length) waiters.shift()(state);
     onState?.(state);
   });

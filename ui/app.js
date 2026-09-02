@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=184';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=184';
-import { localSession } from './session.js?v=184';
-import { remoteSession } from './remote-session.js?v=184';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=184';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=184';
-import { buildGuide } from './guide.js?v=184';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=184';
-import { createBoardView } from './board.js?v=184';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=184';
+import { SEATS } from '../engine/src/board.mjs?v=185';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=185';
+import { localSession } from './session.js?v=185';
+import { remoteSession } from './remote-session.js?v=185';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=185';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=185';
+import { buildGuide } from './guide.js?v=185';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=185';
+import { createBoardView } from './board.js?v=185';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=185';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -26,7 +26,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=184），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=185），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -414,6 +414,10 @@ async function confirmSetup() {
     await sync();
     return;
   }
+  // 連線版每個人有自己的裝置，沒有「把電腦交給誰」這回事。
+  // （remoteSession 的 isAI() 一律回 false——電腦在伺服器上，前端分不出來，
+  //   所以下面那條「找一個不是電腦的座位」在連線版會把對手甚至電腦都當成要交接的人。）
+  if (online) { await sync(); return; }
   // 自己排完了，換另一個人。要先擋一下畫面，否則他一按確定就看到你的陣。
   const other = SEATS.find(x => !S.readySeats.has(x) && !isAI(x));
   if (other == null) { await sync(); return; }
@@ -542,8 +546,13 @@ async function onPlayClick(id) {
   if (S.status !== 'playing' || busy) return;
   const seat = currentSeat();
   if (isAI(seat)) return;
-  // 熱座：輪到另一個人時，要先按「換手」才能動棋，避免替別人下錯
-  if (ownerOfSeat(seat) !== activeHuman) { hint(`輪到 ${nameOf(seat)}，請先按換手`); return; }
+  // 連線版：只看「現在輪到的那家是不是我的」。沒輪到就什麼都別做。
+  if (online) {
+    if (!session.seatsOwnedBy().includes(S.turn)) { hint('還沒輪到你'); return; }
+  } else if (ownerOfSeat(seat) !== activeHuman) {
+    // 熱座：輪到另一個人時，要先按「換手」才能動棋，避免替別人下錯
+    hint(`輪到 ${nameOf(seat)}，請先按換手`); return;
+  }
   const occ = S.board?.at[id];
 
   if (selected && moves.includes(id)) {
@@ -552,7 +561,7 @@ async function onPlayClick(id) {
     busy = false;
     await runAIs();                                          // 先讓電腦把它們的棋走完
     // 換人了才停下來等交接。同一個人接著走（例如一人控兩家）就不用停。
-    if (S.status === 'playing' && !isAI(currentSeat()) && ownerOfSeat(currentSeat()) !== activeHuman) {
+    if (!online && S.status === 'playing' && !isAI(currentSeat()) && ownerOfSeat(currentSeat()) !== activeHuman) {
       viewSeatOverride = seat;
       refresh();
     }
@@ -681,7 +690,7 @@ function refresh() {
   // 熱座模式：走完先停在自己視角，按了才換手。
   // 只要「輪到的那家不屬於現在坐在電腦前的人」就一定要出現換手鈕——
   // 少了這個條件，佈陣交接之後開局第一手會卡死：棋動不了、按鈕也不出現。
-  const needHandoff = S.status === 'playing' && S.turn != null
+  const needHandoff = !online && S.status === 'playing' && S.turn != null
     && !isAI(S.turn) && ownerOfSeat(S.turn) !== activeHuman;
   let handoff = document.getElementById('handoff');
   if ((viewSeatOverride != null || needHandoff) && !handoff) {

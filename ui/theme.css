@@ -160,7 +160,11 @@ body {
 .ins--flag { fill: var(--rank-flag); }
 .ins--flag-pole { stroke: var(--ink); stroke-width: 1.6; }
 
-.handoff { position: absolute; padding: 14px 28px; font-size: 16px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+/* 換手鈕：一機兩人才會出現。**不要浮在棋盤上**——Lynch 在手機上被它擋住整個中央
+   （「太礙眼，拿掉，或是放別地方不要擋到畫面」）。改成排在棋盤下方的一般元素，
+   棋盤本身不會被推動，只有下面的面板往下挪。 */
+.handoff { display: block; margin: 10px auto 0; padding: 14px 28px; font-size: 16px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); }
 .stage { position: relative; }
 
 /* 結局畫面 */

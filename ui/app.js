@@ -1,14 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=180';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=180';
-import { localSession } from './session.js?v=180';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=180';
-import { buildGuide } from './guide.js?v=180';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=180';
-import { createBoardView } from './board.js?v=180';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=180';
+import { SEATS } from '../engine/src/board.mjs?v=183';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=183';
+import { localSession } from './session.js?v=183';
+import { remoteSession } from './remote-session.js?v=183';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=183';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=183';
+import { buildGuide } from './guide.js?v=183';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=183';
+import { createBoardView } from './board.js?v=183';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=183';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -20,11 +22,11 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=180），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=183），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -160,7 +162,10 @@ const MODES = {
   duelTeam: { controllers: ['A', 'B', 'A', 'B'],    names: ['你', '對手', '你（對家）', '對手（對家）'] },
 };
 const mode = () => MODES[els.mode.value] ?? MODES.solo;
-const controllers = () => mode().controllers;
+// 座位歸誰、叫什麼名字，一律向連線層問——本機版與連線版共用同一條路。
+// 本機版回傳的就是上面那張表；連線版回傳的是伺服器分配的座位與真人暱稱。
+// （session 還沒建立時退回本機那張表，newGame 一開始就會用到。）
+const controllers = () => session?.controllers ?? mode().controllers;
 const solo = () => els.mode.value === 'solo';
 const humansInGame = () => [...new Set(controllers().filter(c => c !== 'ai'))];
 // 熱座：現在坐在電腦前面的是誰（'A' 或 'B'）
@@ -168,7 +173,7 @@ let activeHuman = 'A';
 const mySetupSeats = () => SEATS.filter(s => controllers()[s] === activeHuman);
 const ownerOfSeat = (s) => controllers()[s];
 const isAI = (seat) => session?.isAI(seat) ?? false;
-const NAMES_OF = () => mode().names;
+const NAMES_OF = () => session?.seatNames?.() ?? mode().names;
 
 async function sync() {
   S = await session.snapshot(viewSeat());
@@ -200,6 +205,103 @@ async function newGame() {
   addLog('佈陣開始，兩分鐘倒數');
   startTicker();
   await sync();
+}
+
+// ── 連線對局 ──────────────────────────────────────────────
+// 跟 newGame 幾乎一樣，差別只在 session 換成 remoteSession、而且不由前端驅動電腦。
+// 座位、暱稱、誰先走全部由伺服器決定，這裡只負責「拿到狀態就重畫」。
+let online = null;                 // { code } ——非 null 代表這局是連線局
+
+async function startOnline(code) {
+  clearInterval(ticker);
+  online = { code };
+  gameCode = code;
+  els.gameCode.textContent = code;
+  try {
+    session = await remoteSession({
+      code,
+      nickname: playerName(),
+      onState: () => { syncOnline(); },
+      onError: (msg) => { addLog(msg, true); refresh(); },
+    });
+  } catch (e) {
+    online = null;
+    showModal({ title: '連不上房間', body: textBlock(e.message ?? '請確認邀請連結是否正確'),
+      actions: [{ label: '好', primary: true, onClick: closeModal }] });
+    return;
+  }
+  activeHuman = 'me';
+  selected = null; moves = []; logLines = []; busy = false; viewSeatOverride = null;
+  resultShown = false; lastMove = null; recentMoves = []; drawAskedAt = -1; els.overlay.hidden = true;
+  addLog(`連線對局　房間代號 ${code}`, true);
+  await syncOnline();
+}
+
+// 伺服器推來新狀態就重畫。大廳階段顯示座位表，開始佈陣之後就走原本那條路。
+async function syncOnline() {
+  const info = session?.roomInfo?.();
+  if (!info) return;
+  if (info.status === 'lobby') { renderLobby(info); return; }
+  closeModalIfLobby();
+  setupSeat = session.seatsOwnedBy()[0] ?? 0;
+  if (!Object.keys(myLayout ?? {}).length || S?.status !== info.status)
+    myLayout = await session.layout(setupSeat);
+  await sync();
+  if (info.status === 'setup') startTicker();
+}
+
+let lobbyOpen = false;
+const closeModalIfLobby = () => { if (lobbyOpen) { lobbyOpen = false; closeModal(); } };
+
+const textBlock = (t) => { const d = document.createElement('div'); d.className = 'modal-lead'; d.textContent = t; return d; };
+
+// 大廳：誰坐哪、邀請連結、開始。每次伺服器推狀態就整個重畫（人少、很便宜）。
+function renderLobby(info) {
+  const wrap = document.createElement('div');
+  const link = `${location.origin}${location.pathname}?room=${info.code}`;
+
+  wrap.append(textBlock('把下面這個連結傳給朋友，他點開就會進到這一間。'));
+  const box = document.createElement('div');
+  box.className = 'report-code';
+  box.textContent = link;
+  box.title = '點一下複製';
+  box.addEventListener('click', () => {
+    navigator.clipboard?.writeText(link);
+    box.textContent = '已複製　' + link;
+  });
+  wrap.append(box);
+
+  const table = document.createElement('div');
+  table.className = 'lobby-seats';
+  for (const seat of SEATS) {
+    const row = document.createElement('div');
+    row.className = 'lobby-row';
+    const who = info.seats?.[seat];
+    const label = document.createElement('span');
+    label.className = `lobby-seat ind-seat${seat}`;
+    label.textContent = ['你這方', '右家', '對家', '左家'][seat];
+    const name = document.createElement('span');
+    name.className = 'lobby-name';
+    name.textContent = who ? (who.ai ? `${who.nickname}（電腦）` : who.nickname) : '（空位）';
+    row.append(label, name);
+    if (!who) {
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.textContent = '坐這裡';
+      b.addEventListener('click', () => session.send({ type: 'seat', seat }));
+      row.append(b);
+    }
+    table.append(row);
+  }
+  wrap.append(table);
+
+  const actions = [];
+  if (info.isHost) actions.push({ label: '開始遊戲', primary: true,
+    onClick: () => session.send({ type: 'start' }) });
+  actions.push({ label: '離開', onClick: () => { session?.close?.(); online = null; closeModal(); newGame(); } });
+
+  lobbyOpen = true;
+  showModal({ title: `房間 ${info.code}`, body: wrap, actions });
 }
 
 function startTicker() {
@@ -1018,6 +1120,44 @@ function openReport() {
     ],
   });
 }
+// 多人連線：選一種玩法就開一間房，拿到邀請連結丟給朋友。
+// 三種對應到伺服器的兩個參數：mode 決定是雙人還是四人局，fill 決定空位由誰補。
+const ONLINE_MODES = [
+  { label: '四人局（找三位朋友）', mode: 'four', fill: 'mate',
+    desc: '人不滿也可以開始，空位由同隊的人接手' },
+  { label: '雙人合作（兩人一隊打電腦）', mode: 'two', fill: 'ai',
+    desc: '你和朋友同一隊，對面兩家是電腦' },
+  { label: '雙人敵對（各控一整隊）', mode: 'two', fill: 'mate',
+    desc: '你和朋友各自操控一整隊兩家' },
+];
+
+function openOnlineMenu() {
+  const wrap = document.createElement('div');
+  wrap.append(textBlock('開一間房，把連結傳給朋友就能一起玩。'));
+  for (const m of ONLINE_MODES) {
+    const b = document.createElement('button');
+    b.className = 'btn online-choice';
+    b.innerHTML = `<b>${m.label}</b><span>${m.desc}</span>`;
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      b.querySelector('b').textContent = '開房中…';
+      try {
+        const code = await createRoom({ mode: m.mode, fill: m.fill });
+        closeModal();
+        await startOnline(code);
+      } catch (e) {
+        b.disabled = false;
+        b.querySelector('b').textContent = m.label;
+        hint(e.message ?? '開房失敗', true);
+      }
+    });
+    wrap.append(b);
+  }
+  showModal({ title: '多人連線', body: wrap,
+    actions: [{ label: '取消', primary: true, onClick: closeModal }] });
+}
+els.online.addEventListener('click', openOnlineMenu);
+
 els.gameCode.addEventListener('click', openReport);
 els.gameCode.title = '點一下：回報問題要附的資訊';
 
@@ -1115,7 +1255,13 @@ els.restart.addEventListener('click', async () => {
 // 進站先問代稱，問完才開局（第一次才會問，之後記住）
 // 第一次進站的人不知道規則說明在哪，直接跳給他看；看過一次就不再跳。
 const SEEN_GUIDE = 'army-online:seen-guide';
-askNickname().then(newGame).then(() => {
+// 帶著邀請連結進來的人，直接進那一間房，不要先開一局單人的。
+const joinCode = new URLSearchParams(location.search).get('room');
+const boot = joinCode
+  ? askNickname().then(() => startOnline(joinCode.toUpperCase()))
+  : askNickname().then(newGame);
+
+boot.then(() => {
   if (localStorage.getItem(SEEN_GUIDE)) return;
   try { localStorage.setItem(SEEN_GUIDE, '1'); } catch { /* 存不下不影響 */ }
   openGuide();

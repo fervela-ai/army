@@ -496,3 +496,12 @@ body {
 .title-name { font-size: 26px; font-weight: 800; letter-spacing: .08em; color: var(--rank-star); }
 .title-desc { font-size: 14px; color: var(--ink-soft); margin-top: 4px; }
 .title-streak { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--seat-0); }
+
+/* 大廳：誰坐哪、邀請連結 */
+.lobby-seats { display: grid; gap: 8px; margin: 12px 0 4px; }
+.lobby-row { display: flex; align-items: center; gap: 10px; }
+.lobby-seat { font-weight: 700; min-width: 4.5em; color: var(--indicator, var(--ink)); }
+.lobby-name { flex: 1; color: var(--ink-soft); }
+.online-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; text-align: left; margin-top: 8px; padding: 12px 14px; }
+.online-choice span { font-size: 13px; color: var(--ink-soft); font-weight: 400; }

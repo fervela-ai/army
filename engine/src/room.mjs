@@ -22,11 +22,21 @@ export const cleanNickname = (raw) => {
   return kept.join('').trim().slice(0, NICKNAME_MAX) || '無名氏';
 };
 
-export function createRoom({ mode = 'four', code, rnd = Math.random } = {}) {
+// AI 座位用一個假玩家表示，這樣 seatsOf／stateForPlayer／play 全部不用改。
+// 為什麼是「假玩家」而不是另一套分支：房間層對「誰持有這個座位」只認 playerId，
+// 讓 AI 也有一個 id，整條規則路徑就完全共用，將來抽掉 AI 也不會留下疤痕。
+// ⚠ engine/src 不可以 import engine/ai（單向相依），所以這裡只記「哪些座位是 AI」，
+//    真正的走子由呼叫端（伺服器）算好再送進 play()。
+export const AI_PLAYER = 'ai';
+
+export function createRoom({ mode = 'four', code, fill = 'mate', rnd = Math.random } = {}) {
   if (!MODES[mode]) throw new Error(`未知模式 ${mode}`);
   return {
     code: code ?? makeInviteCode(rnd),
-    mode, host: null,
+    // fill：人不滿時空位怎麼補。
+    //   'mate'＝由同隊隊友接手（Lynch 定的預設：AI 太弱時，跟 AI 當隊友比自己控兩家更難玩）
+    //   'ai'  ＝空位交給電腦（雙人合作模式就是兩人一隊打兩家電腦）
+    mode, fill, host: null,
     status: 'lobby',            // lobby → setup → playing → ended
     players: new Map(),         // playerId → { id, nickname, connected }
     seats: new Map(),           // seat 0..3 → playerId
@@ -75,15 +85,26 @@ export const isFull = (room) => room.seats.size === 4;
 // 開局條件：兩隊各至少要有一個人。空位由同隊隊友接手（持有座位較少的人優先）。
 export function canStart(room) {
   if (room.status !== 'lobby') return { ok: false, reason: '遊戲已經開始了' };
-  for (const team of [0, 1])
-    if (playersOfTeam(room, team).length === 0)
-      return { ok: false, reason: `${team === 0 ? '隊A（上下家）' : '隊B（左右家）'}還沒有人` };
+  // fill='ai' 時空位交給電腦，所以一整隊都沒人也可以開（雙人合作模式就是這樣：
+  // 兩個人一隊，對面兩家全是電腦）。fill='mate' 才需要兩隊都有人。
+  if (room.fill !== 'ai')
+    for (const team of [0, 1])
+      if (playersOfTeam(room, team).length === 0)
+        return { ok: false, reason: `${team === 0 ? '隊A（上下家）' : '隊B（左右家）'}還沒有人` };
+  if (!seatsOf(room, room.host).length && ![...room.seats.values()].some(Boolean))
+    return { ok: false, reason: '還沒有人入座' };
   return { ok: true };
 }
 
 function fillEmptySeats(room) {
   for (const seat of SEATS) {
     if (room.seats.has(seat)) continue;
+    if (room.fill === 'ai') {                      // 空位交給電腦
+      if (!room.players.has(AI_PLAYER))
+        room.players.set(AI_PLAYER, { id: AI_PLAYER, nickname: '電腦', connected: true, ai: true });
+      room.seats.set(seat, AI_PLAYER);
+      continue;
+    }
     const team = TEAM_OF(seat);
     const candidates = playersOfTeam(room, team)
       .filter(pid => seatsOf(room, pid).length < MAX_SEATS_PER_PLAYER)
@@ -92,6 +113,13 @@ function fillEmptySeats(room) {
     room.seats.set(seat, candidates[0]);
   }
 }
+
+// 這一步輪到電腦嗎？伺服器用它決定要不要代打。
+export const isAiTurn = (room) =>
+  room.status === 'playing' && room.seats.get(room.game.turn) === AI_PLAYER;
+
+// AI 佔的座位（伺服器要幫它們交佈陣）
+export const aiSeats = (room) => SEATS.filter(s => room.seats.get(s) === AI_PLAYER);
 
 // 主持人按開局（或四人坐滿）→ 補齊空位、進入佈陣階段。
 export function startSetup(room, now, { by = null, layoutFactory = defaultLayout } = {}) {
@@ -123,7 +151,7 @@ export function submitLayout(room, playerId, layoutsBySeat) {
   return room;
 }
 
-const seatedPlayers = (room) => [...new Set(room.seats.values())];
+const seatedPlayers = (room) => [...new Set(room.seats.values())].filter(pid => pid !== AI_PLAYER);
 export const allReady = (room) => seatedPlayers(room).every(pid => room.ready.has(pid));
 
 // 全部按完成、或倒數結束 → 開局（§8：都完成就直接開始，不必等倒數結束）
@@ -148,13 +176,19 @@ export function publicState(room) {
   const seats = {};
   for (const [seat, pid] of room.seats) {
     const p = room.players.get(pid);
-    seats[seat] = { nickname: p.nickname, connected: p.connected, playsTwoSeats: seatsOf(room, pid).length > 1 };
+    seats[seat] = { nickname: p.nickname, connected: p.connected, ai: !!p.ai,
+      playsTwoSeats: seatsOf(room, pid).length > 1 };
   }
   return {
     code: room.code, mode: room.mode, host: room.host, status: room.status,
     seats, setupSeconds: room.setupSeconds, setupDeadline: room.setupDeadline,
     readySeats: [...room.ready].flatMap(pid => seatsOf(room, pid)),
     result: room.game?.result ?? null,
+    // 以下都是公開資訊（手數、誰出局了），畫面要用來算提和門檻與顯示戰況。
+    // 不含任何棋子身分，所以放在公開狀態裡沒有問題。
+    plies: room.game?.plies ?? 0,
+    pliesSinceCapture: room.game?.pliesSinceCapture ?? 0,
+    eliminated: [...(room.game?.eliminated ?? [])],
   };
 }
 
@@ -166,6 +200,11 @@ export function stateForPlayer(room, playerId) {
   const p = room.players.get(playerId);
   const mySeats = seatsOf(room, playerId);
   const you = p ? { nickname: p.nickname, seats: mySeats, isHost: room.host === playerId } : null;
-  if (!room.game) return { ...pub, you, board: null };
-  return { ...pub, you, board: viewFor(room.game, mySeats), yourTurn: mySeats.includes(room.game.turn) };
+  // 佈陣階段要把**他自己那幾家的佈陣**送給他，否則他看不到自己的棋子、無從調整。
+  // 這不算洩漏：那本來就是他的棋。別人的佈陣一個字都不送。
+  const yourLayouts = {};
+  for (const s of mySeats) if (room.layouts[s]) yourLayouts[s] = { ...room.layouts[s] };
+  if (!room.game) return { ...pub, you, yourLayouts, board: null };
+  return { ...pub, you, yourLayouts, board: viewFor(room.game, mySeats),
+    yourTurn: mySeats.includes(room.game.turn) };
 }

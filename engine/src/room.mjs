@@ -127,7 +127,14 @@ export function startSetup(room, now, { by = null, layoutFactory = defaultLayout
   if (!can.ok) throw new Error(can.reason);
   if (by && by !== room.host && !isFull(room)) throw new Error('人不滿時只有主持人可以開局');
   fillEmptySeats(room);
-  const maxSeats = Math.max(...[...new Set(room.seats.values())].map(pid => seatsOf(room, pid).length));
+  // 佈陣時限看「有人最多要佈幾家」——**只算真人**。電腦不需要時間，
+  // 而它可能一個人佔三家（雙人合作只有一位玩家時），SETUP_SECONDS_BY_SEATS[3] 是 undefined，
+  // deadline 就變成 NaN，`now < NaN` 永遠是 false → 一按開始就直接開局，玩家連佈陣都來不及。
+  // （實際踩到：連線版雙人合作自己一個人開局，佈陣階段整個被跳過。）
+  const humanSeatCounts = [...new Set(room.seats.values())]
+    .filter(pid => pid !== AI_PLAYER)
+    .map(pid => seatsOf(room, pid).length);
+  const maxSeats = Math.min(MAX_SEATS_PER_PLAYER, Math.max(1, ...humanSeatCounts));
   room.setupSeconds = SETUP_SECONDS_BY_SEATS[maxSeats];
   room.status = 'setup';
   room.setupDeadline = now + room.setupSeconds * 1000;

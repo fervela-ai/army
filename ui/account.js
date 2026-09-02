@@ -7,7 +7,7 @@
 //
 // 換裝置靠「還原碼」：一組抄得下來的短碼，在新裝置貼上就接續同一個帳號。
 // **只有在玩家已經有東西可失去的時候才提出**——那時他才有動機去抄。
-import { GAME_ENDPOINT } from './config.js?v=186';
+import { GAME_ENDPOINT } from './config.js?v=187';
 
 const KEY = 'army-online:account';
 

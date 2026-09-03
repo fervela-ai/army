@@ -8,11 +8,12 @@
 //   remoteSession：伺服器說了算，這裡只是把動作送出去、把推回來的狀態存起來。
 // 所以這裡不做任何「先假裝走了」的樂觀更新——暗棋一旦前後端狀態不一致，
 // 玩家會看到自己的棋子跳回去，比慢半秒難受得多。
-import { SEATS } from '../engine/src/board.mjs?v=189';
-import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=189';
-import { GAME_WS } from './config.js?v=189';
-import { ensureAccount } from './account.js?v=189';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=189';
+import { SEATS } from '../engine/src/board.mjs?v=190';
+import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=190';
+import { GAME_WS } from './config.js?v=190';
+import { ensureAccount } from './account.js?v=190';
+import { gameStats } from '../engine/src/game-stats.mjs?v=190';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=190';
 
 // 伺服器沒告訴我這一手的結果時，從前後盤面推回來：
 // 終點現在是我的棋＝走過去了（原本有敵人就是吃掉了）、空的＝同歸於盡、還是敵人＝我死了。
@@ -183,10 +184,19 @@ export async function remoteSession({ code, nickname, onState, onError } = {}) {
       return state?.result ?? null;
     },
 
-    // 統計要看全場真實身分，只有伺服器算得出來。還沒接，先回 null，
-    // app.js 收到 null 就不畫統計那一段（結算畫面仍然會出現）。
-    stats: async () => null,
-    record: async () => null,
+    // 統計要看全場真實身分。伺服器在**局終**才把全盤與棋譜送過來
+    // （見 engine/src/room.mjs 與 server/room-server.mjs 的 ended 分支），
+    // 所以這裡跟本機版走同一支 gameStats——結算畫面、頭銜、成就全部一致。
+    // 局中拿不到，回 null，app.js 就不畫統計那一段。
+    stats: async (seat) => {
+      const moves = state?.record?.moves;
+      if (!moves || !state?.board) return null;
+      return gameStats({
+        pieces: Object.values(state.board.at ?? {}),
+        moves, seat: seat ?? mySeats()[0] ?? 0, plies: state.plies ?? 0,
+      });
+    },
+    record: async () => (state?.record ?? null),
     revealAll: async () => null,           // 連線版永遠不給：那是單機除錯用的
 
     setupBoard: async (seat) => {

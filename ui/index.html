@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋（試玩版）</title>
-<link rel="stylesheet" href="theme.css?v=189">
+<link rel="stylesheet" href="theme.css?v=190">
 </head>
 <body>
 <!-- 實驗中的棋路開關：用網址參數打開，預設關閉，朋友不受影響。
@@ -78,6 +78,9 @@
       <div class="overlay-emblem" id="overlayEmblem"></div>
       <h2 class="overlay-title" id="overlayTitle"></h2>
       <p class="overlay-sub" id="overlaySub"></p>
+      <!-- 局名要出現在結算畫面：大家是丟截圖討論棋局的，代號不在圖裡就對不上是哪一局
+           （Lynch：「勝利畫面希望也要秀出這局的名稱」）。 -->
+      <p class="overlay-code" id="overlayCode"></p>
       <button class="btn btn--primary overlay-btn" id="overlayAgain">再玩一局</button>
     </div>
   </div>
@@ -93,6 +96,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=189"></script>
+<script type="module" src="app.js?v=190"></script>
 </body>
 </html>

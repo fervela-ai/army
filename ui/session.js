@@ -6,16 +6,17 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=189';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=189';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=190';
+import { gameStats } from '../engine/src/game-stats.mjs?v=190';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=190';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=189';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=189';
-import { VALUE } from '../engine/ai/lookahead.mjs?v=189';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=189';
-import { searchMove } from '../engine/ai/search.mjs?v=189';
+} from '../engine/src/room.mjs?v=190';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=190';
+import { VALUE } from '../engine/ai/lookahead.mjs?v=190';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=190';
+import { searchMove } from '../engine/ai/search.mjs?v=190';
 
 // controllers：四個座位分別由誰控制。'ai' 或玩家代號（'A'、'B'）。
 // 所有模式都只是這張表的不同填法——引擎那層本來就是用「座位→玩家」在跑的：
@@ -159,60 +160,10 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
     // 對戰統計。只有連線層算得出來——它才知道每顆棋子的真實身分。
     // Lynch 要的三項：殘子（1/2/3）、出兵勝率、炸彈換到 1/2 的獎勵。
     // 這也是之後要做積分／獎勵系統的地基。
-    stats: async (seat) => {
-      const team = TEAM_OF(seat);
-      const alive = { mine: { 司令: 0, 軍長: 0, 師長: 0 }, foe: { 司令: 0, 軍長: 0, 師長: 0 } };
-      // 每一家分開算（Lynch 要的表格：縱軸四家、橫軸 1／2／3／炸彈）
-      const bySeat = SEATS.map(() => ({ 司令: 0, 軍長: 0, 師長: 0, 炸彈: 0 }));
-      if (room.game) {
-        for (const [, o] of room.game.at) {
-          const side = TEAM_OF(o.seat) === team ? 'mine' : 'foe';
-          if (o.piece in alive[side]) alive[side][o.piece]++;
-          if (o.piece in bySeat[o.seat]) bySeat[o.seat][o.piece]++;
-        }
-      }
-      // 出兵勝率：我方主動發起的攻擊裡，吃掉對方的比例
-      let attacks = 0, won = 0, traded = 0, lost = 0, bombBonus = 0;
-      const bombKills = [];
-      for (const m of record) {
-        if (TEAM_OF(m.seat) !== team) continue;
-        if (m.outcome === 'moved') continue;          // 沒碰到人，不算出兵
-        attacks++;
-        if (m.outcome === 'defenderDead') won++;
-        else if (m.outcome === 'bothDead') traded++;
-        else lost++;
-        // 炸彈換到司令或軍長＝最高價值的一擊
-        if (m.piece === '炸彈' && m.outcome === 'bothDead' && m.victim) {
-          if (m.victim === '司令' || m.victim === '軍長') { bombBonus++; bombKills.push(m.victim); }
-        }
-      }
-      // 給成就用的細項
-      let minesDug = 0, bombsSpent = 0, myCommanderAlive = false;
-      let flagsTaken = 0, myFlagsTaken = 0, myFlagLost = false, topKills = 0;
-      for (const m of record) {
-        if (m.victim === '軍旗' && m.outcome === 'defenderDead') {
-          if (TEAM_OF(m.seat) === team) flagsTaken++;                 // 我隊扛到的旗
-          if (m.seat === seat) myFlagsTaken++;                        // **我自己**扛到的旗
-          else if (m.to?.startsWith(`P${seat}-`)) myFlagLost = true;  // 自己那面被扛
-        }
-        if (TEAM_OF(m.seat) !== team) continue;
-        if (m.piece === '工兵' && m.victim === '地雷' && m.outcome === 'defenderDead') minesDug++;
-        if (m.piece === '炸彈' && m.outcome === 'bothDead') bombsSpent++;
-        // 吃掉對方的司令／軍長（不含炸彈換的，那是 bombBonus）
-        if (m.outcome === 'defenderDead' && m.piece !== '炸彈'
-            && (m.victim === '司令' || m.victim === '軍長')) topKills++;
-      }
-      if (room.game) for (const [, o] of room.game.at)
-        if (o.seat === seat && o.piece === '司令') myCommanderAlive = true;
-
-      return {
-        alive, bySeat, attacks, won, traded, lost, minesDug, bombsSpent, myCommanderAlive,
-        // Lynch：「同歸於盡應該算贏，因為不虧。」
-        winRate: attacks ? (won + traded) / attacks : null,
-        bombBonus, bombKills, flagsTaken, myFlagsTaken, myFlagLost, topKills,
-        plies: room.game?.plies ?? 0,
-      };
-    },
+    stats: async (seat) => gameStats({
+      pieces: room.game ? [...room.game.at.values()] : [],
+      moves: record, seat, plies: room.game?.plies ?? 0,
+    }),
 
     record: async () => ({ layouts: room.layouts, moves: record }),
     // 全部掀開只有單機練習給——連線版不會有這個入口

@@ -1,32 +1,34 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=189';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=189';
-import { localSession } from './session.js?v=189';
-import { remoteSession } from './remote-session.js?v=189';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=189';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=189';
-import { buildGuide } from './guide.js?v=189';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=189';
-import { createBoardView } from './board.js?v=189';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=189';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=190';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=190';
+import { localSession } from './session.js?v=190';
+import { remoteSession } from './remote-session.js?v=190';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=190';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=190';
+import { buildGuide } from './guide.js?v=190';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=190';
+import { createBoardView } from './board.js?v=190';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=190';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
 const nameOf = (s) => NAMES_OF()[s] ?? ['你', '右家', '對家', '左家'][s];
+// 我坐哪一家。單機版永遠是 0；連線版由伺服器分配，可能是任一家。
+const mySeat = () => session?.seatsOwnedBy?.()?.[0] ?? 0;
 const SAVE_KEY = 'army-online:layouts:v2';
 const GAMES_KEY = 'army-online:games';
 const PLAYER_KEY = 'army-online:player';      // 玩家代稱，問過一次就記住
 const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中斷也不會遺失        // 保留最近幾局的完整棋譜，供事後分析   // { 名稱: { seat, layout, savedAt } }
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
-  'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayAgain',
+  'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayCode', 'overlayAgain',
   'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=189），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=190），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -184,6 +186,19 @@ async function sync() {
 
 async function newGame() {
   clearInterval(ticker);
+  // 從連線局按「重新開局」：一定要先把連線收掉。
+  // 不收的話，舊房間還在推狀態，一推就把新開的這一局蓋回去——
+  // 畫面上就是「按了重新開局沒反應」（Lynch 實測）。
+  // 重新開局一律回到單人練習（模式選單預設 solo）；要再打連線局就按「多人連線」。
+  if (online) {
+    try { session?.close?.(); } catch { /* 已經斷了就算了 */ }
+    online = null;
+    remoteChain = Promise.resolve();
+    // 網址上的 ?room= 也要清掉，否則重新載入又跳回那一間
+    if (new URLSearchParams(location.search).has('room'))
+      history.replaceState(null, '', location.pathname);
+  }
+  session = null;               // controllers() 要退回本機那張表，不能沿用連線層的座位
   gameCode = newGameCode();
   els.gameCode.textContent = gameCode;      // 留在畫面上，截圖才帶得走
   // 電腦用心法佈陣（三角雷護旗、大子後接工兵再接炸彈）。
@@ -759,7 +774,9 @@ function showResult() {
   resultShown = true;
   const r = S.result;
   saveGameRecord(r);
-  const myTeam = 0;                                   // 你永遠坐 P0，隊A
+  // ⚠ 連線版的座位是伺服器分配的，可能是 1 或 3（隊B）。
+  //    這裡原本寫死「你永遠坐 P0」，在連線局會把勝負講反。
+  const myTeam = TEAM_OF(mySeat());
   const win = r.type === 'win' && r.team === myTeam;
   const draw = r.type === 'draw';
   els.overlayEmblem.textContent = draw ? '🤝' : (win ? '🏆' : '💀');
@@ -770,6 +787,7 @@ function showResult() {
     : r.reason === 'resign'
       ? `你認輸離開　共 ${S.plies} 步（棋譜已保留）`
       : `${win ? '你和對家' : '左右兩家'}拿下了對方兩面軍旗　共 ${S.plies} 步`;
+  els.overlayCode.textContent = gameCode ? `局名 ${gameCode}` : '';
   els.overlay.hidden = false;
   (draw ? SFX.flag : (win ? SFX.victory : SFX.defeat))();
   showStats();
@@ -789,7 +807,7 @@ async function showStats() {
   }
   box.replaceChildren();
   let st;
-  try { st = await session.stats(0); } catch { return; }
+  try { st = await session.stats(mySeat()); } catch { return; }
 
   const row = (label, value, note = '') => {
     const li = document.createElement('li');

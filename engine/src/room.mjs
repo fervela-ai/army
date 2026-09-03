@@ -212,6 +212,9 @@ export function stateForPlayer(room, playerId) {
   const yourLayouts = {};
   for (const s of mySeats) if (room.layouts[s]) yourLayouts[s] = { ...room.layouts[s] };
   if (!room.game) return { ...pub, you, yourLayouts, board: null };
-  return { ...pub, you, yourLayouts, board: viewFor(room.game, mySeats),
+  // 局終全部揭露：勝負已定，沒有什麼要保密的，而結算畫面（各家剩下的大子、頭銜）
+  // 需要全場真實身分。**只有 ended 才這樣**——局中一個字都不會多送。
+  const board = room.status === 'ended' ? viewFor(room.game, SEATS) : viewFor(room.game, mySeats);
+  return { ...pub, you, yourLayouts, board,
     yourTurn: mySeats.includes(room.game.turn) };
 }

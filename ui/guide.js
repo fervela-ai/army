@@ -2,7 +2,7 @@
 //
 // 為什麼做在遊戲裡而不是另開網頁：新玩家是「打開就想玩」，
 // 願意先去讀一頁規則的人很少。放在按得到的地方，卡住時才會去看。
-import { buildBasicsTour } from './guide-demo.js?v=189';
+import { buildBasicsTour } from './guide-demo.js?v=190';
 
 const SECTIONS = [
   {

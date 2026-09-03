@@ -176,6 +176,10 @@ body {
   animation: overlay-in .28s ease-out;
 }
 @keyframes overlay-in { from { opacity: 0 } to { opacity: 1 } }
+.overlay-code {
+  margin: 2px 0 14px; font-size: 13px; letter-spacing: .08em;
+  color: var(--muted, #8a8172); font-variant-numeric: tabular-nums;
+}
 .overlay-card {
   background: var(--panel-bg); border-radius: 20px; padding: 36px 52px; text-align: center;
   box-shadow: 0 24px 60px rgba(0,0,0,.35); animation: card-in .34s cubic-bezier(.2,1.2,.4,1);
@@ -471,7 +475,11 @@ body {
 
 @media (max-width: 768px) {
   /* 手機：左右留白吃掉太多寬度，統計表會被擠到換行 */
-  .overlay-card { padding: 24px 18px; min-width: 0; width: 100%; }
+  .overlay-code {
+  margin: 2px 0 14px; font-size: 13px; letter-spacing: .08em;
+  color: var(--muted, #8a8172); font-variant-numeric: tabular-nums;
+}
+.overlay-card { padding: 24px 18px; min-width: 0; width: 100%; }
 }
 
 .modal-lead { font-size: 15px; line-height: 1.7; margin-bottom: 10px; }

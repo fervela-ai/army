@@ -117,6 +117,7 @@ const DEFAULT_W = {
   frontCampLeave: 20,   // 沒事不要離開門前的行營——空出來就是給對方踏板
   noRevenge: 10,        // 剛折損在那格，不要馬上再送一顆回去
   defendPull: 9,        // 有敵人逼近自家軍旗時，把棋子拉回去攔截（近距離：站到它旁邊）
+  homeGuard: 0,         // 家門口沒人時，把最近的一顆拉回去守（0＝關閉，等劑量掃描）
   defendReturn: 12,     // 同上的遠距離版：人在天邊也要開始往回走。
                         // 劑量掃描（不要只看單點，這裡差點被單次比較騙到）：
                         //   末盤防守率     0→27.2%　3→—　6→28.4%　12→31.3%　20→34.6%　40→35.1%
@@ -173,6 +174,13 @@ export function makePersonality(base = W, rnd = Math.random) {
 }
 
 const isBackRow = (id) => /r[56]c/.test(id);
+// 地雷只可能在「那一家自己陣地的後兩排」——這是佈陣規則，全場都知道，不是偷看。
+// 所以站在別處的敵子**不可能是地雷**，工兵去碰就是純送死。
+// Lynch 2026-09-04 實戰：「工兵飛來吃我 2，這個 2 已經吃過五隻子，
+// 很明顯就不是工兵可以處理的。」
+// 量出來的病狀（sim/eng-waste.mjs 150 局）：工兵以「拆雷」為理由出手 481 次，
+// 撞到的是工兵 321、軍長 29、師長 27…**實際拆掉的地雷 0 顆**。
+const mineSquare = (id, occ) => isBackRow(id) && !!occ && Number(id[1]) === occ.seat;
 const mateSeatOf = (seat) => [0, 1, 2, 3].find(x => x !== seat && TEAM_OF(x) === TEAM_OF(seat));
 
 // 地雷比較常出現在大本營附近，但**這只是傾向，不是定律**。
@@ -444,7 +452,10 @@ export function engineerReasons(game, seat, memory, from, to) {
     const o = game.at.get(n);
     return o && TEAM_OF(o.seat) === TEAM_OF(seat) && (PIECES[o.piece]?.rank ?? 0) >= 6;
   });
-  const 拆地雷 = !!suspectMine || (deadly > 0 && !memory.notMine?.has(to));
+  // 「有我方棋子死在那」本身不是地雷的證據——更可能是一顆吃過人的大子。
+  // 要先站得住「那一格有可能是地雷」這個結構條件（自己陣地的後兩排、而且從沒動過）。
+  const 可能是雷格 = mineSquare(to, target) && !memory.moved?.has(to) && !memory.notMine?.has(to);
+  const 拆地雷 = !!suspectMine || (deadly > 0 && 可能是雷格);
   // 「幫隊友擋炸彈」這件事**不該用工兵做**（Lynch 2026-09-02）：
   // 「擋人不是叫你拿工兵擋。工兵這樣叫送死。」
   // 工兵是全隊唯一能拆雷的子，拿去當肉盾等於把整局的拆雷能力送掉。
@@ -626,9 +637,15 @@ export function scoreMove(game, seat, memory, { from, to }) {
     if (擋炸彈) score += 8;
     if (進行營) score += w.engCamp;      // 工兵躲進行營：保住全隊唯一能拆雷的棋子
 
-    // 工兵絕不去吃「動過的棋子」——那不可能是地雷，純送死
-    const couldBeMine = !memory.moved?.has(to) && !memory.notMine?.has(to);
-    if (target && !couldBeMine && !測炸彈 && !memory.weakKnown?.has(to)) return -50;
+    // 工兵絕不去碰「不可能是地雷」的格子——動過的、或根本不在那一家後兩排的，
+    // 都不可能是雷，而工兵輸給場上每一顆會動的棋，去碰就是純送死。
+    // 原本只擋「動過的」，漏掉了「站在別處」：一顆守在自家門口不動、
+    // 靠反擊吃掉五顆子的大子，看起來就跟地雷一樣——但它若不在後兩排就一定不是雷。
+    // 這是鐵律，不是權重：撞上去沒有任何上檔空間（-50 只是軟性扣分，會被 engFlagMine
+    // 那類 +200 的獎勵蓋過去）。例外只有兩個：換炸彈是賺的、已知的弱子可以吃。
+    const couldBeMine = mineSquare(to, target)
+      && !memory.moved?.has(to) && !memory.notMine?.has(to);
+    if (target && !couldBeMine && !測炸彈 && !memory.weakKnown?.has(to)) return -Infinity;
 
     if (!有理由) {
       // 工兵不吃「往敵陣推進」這套獎勵（Lynch 實戰 VWW-8WC 抓到的）：
@@ -867,6 +884,15 @@ export function scoreMove(game, seat, memory, { from, to }) {
   if (!memory.centreHeld || globalThis.process?.env?.CENTRE_GATE === 'off') {
     const d0 = dist(from, CENTRE), d1 = dist(to, CENTRE);
     if (d1 < d0) score += w.centrePull * Math.max(0, 1 - d1 / 14);
+  }
+
+  // ── 家門口要留人 ──────────────────────────────────────────
+  // 條件跟 centrePull 一樣是「沒人在守才拉」——無條件回防會讓全隊蹲在家裡不打仗，
+  // centrePull 那次已經量過這個形狀（4 最好、8 就掉到 22.5%）。
+  // 預設 0（關閉），要開之前先跑劑量掃描。
+  if (w.homeGuard && !memory.homeHeld && memory.homeFlag) {
+    const d0 = dist(from, memory.homeFlag), d1 = dist(to, memory.homeFlag);
+    if (d1 < d0) score += w.homeGuard * Math.max(0, 1 - d1 / 10);
   }
 
   // ── 開局：前五步先把棋子走進行營（Lynch）─────────────────────
@@ -1147,6 +1173,18 @@ export function chooseMove(game, seat, memory, rnd = Math.random) {
     for (const [id, o] of game.at) {
       if (TEAM_OF(o.seat) !== TEAM_OF(seat)) continue;
       if (dist(id, CENTRE) <= 3.2) { memory.centreHeld = true; break; }
+    }
+  }
+
+  // 自家軍旗附近有沒有守軍：跟 centreHeld 同一個形狀，整輪算一次。
+  // Lynch 2026-09-04：「防守都太差，都容易被攻破，不防守。」
+  {
+    memory.homeFlag = myFlagNode(game, seat);
+    memory.homeHeld = false;
+    if (memory.homeFlag) for (const [id, o] of game.at) {
+      if (o.seat !== seat || id === memory.homeFlag) continue;
+      if (BOARD.nodes.get(id)?.kind === 'hq') continue;      // 大本營裡那顆不能動，不算守軍
+      if (dist(id, memory.homeFlag) <= 2.2) { memory.homeHeld = true; break; }
     }
   }
 

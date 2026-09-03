@@ -215,6 +215,19 @@ export function observe(memory, events) {
       if (survivorMoves) set.add(e.to);
       set.delete(e.from);
     };
+    // ⚠ 該格易主：原本站在那裡的棋子**已經死了**，關於「它是誰」的推論全部作廢。
+    //    這一段一定要放在情報搬家與新推論之前，否則會把剛搬進來的新情報一起刪掉。
+    //    原本只清了 deadly／mineSuspect／revenge，漏掉 weakKnown——後果是那一格
+    //    永遠記著三手前死在那裡的工兵，全隊就會放心去吃一顆大子。
+    //    Lynch 2026-09-04 實戰 260904-WGH 第 26 手：他的軍長剛吃掉守方的排長站在
+    //    P3-r5c5，AI 的工兵立刻飛過去吃——因為記憶裡那格是「已知的工兵」。
+    //    （「工兵飛來吃我 2，這個 2 已經吃過五隻子，很明顯就不是工兵可以處理的。」）
+    if (e.outcome === 'defenderDead' || e.outcome === 'bothDead') {
+      for (const m of [memory.weakKnown, memory.bigThreat, memory.deadly, memory.revenge, memory.lastMovedPly])
+        m.delete(e.to);
+      for (const st of [memory.notBomb, memory.myExposed]) st.delete(e.to);
+    }
+
     // 拆掉疑似地雷的那顆，只可能是工兵——這是暗棋裡最確定的一種曝光
     if (e.outcome === 'defenderDead' && memory.mineSuspect.has(e.to)) memory.weakKnown.set(e.to, '工兵');
     // 走了普通棋子做不到的路線 → 那顆一定是工兵。全場都看得到，敵我皆適用。
@@ -448,7 +461,11 @@ export function engineerReasons(game, seat, memory, from, to) {
 
   const 賭三角雷 = !mateEngineerOut && enemyHQsUnexcluded.some(hq => dist(to, hq) <= 1.5);
   const movedAgo = (memory.ply ?? 0) - (memory.lastMovedPly?.get(to) ?? -99);
-  const 測炸彈 = !!target && movedAgo <= 3 && neighbours(to).some(n => {
+  // ⚠ 「打贏過還活著」的棋子**一定不是炸彈**——炸彈碰到誰都同歸於盡，這是硬推論。
+  //    漏了這一條，就會出現 Lynch 2026-09-04 抓到的那一手：他的軍長剛吃掉一顆排長、
+  //    站在那裡活得好好的，AI 卻派工兵飛過去「測炸彈」，白送一顆工兵。
+  //    （這一格已經在 notBomb 裡了，只是這條理由沒去查它。）
+  const 測炸彈 = !!target && !memory.notBomb?.has(to) && movedAgo <= 3 && neighbours(to).some(n => {
     const o = game.at.get(n);
     return o && TEAM_OF(o.seat) === TEAM_OF(seat) && (PIECES[o.piece]?.rank ?? 0) >= 6;
   });

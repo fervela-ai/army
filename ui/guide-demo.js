@@ -11,10 +11,10 @@
 //
 // 順序也是 Lynch 定的：先棋盤 → 大本營 → 後兩排 → 邊佈陣邊講棋子 → 走子 → 怎麼贏。
 // 理由是新手第一屏就看到扛旗動畫，根本還不知道棋盤長什麼樣。
-import { createBoardView } from './board.js?v=187';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=187';
-import { legalMoves, movePath } from '../engine/src/rules.mjs?v=187';
-import { BOARD } from '../engine/src/board.mjs?v=187';
+import { createBoardView } from './board.js?v=188';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=188';
+import { legalMoves, movePath } from '../engine/src/rules.mjs?v=188';
+import { BOARD } from '../engine/src/board.mjs?v=188';
 
 const NS = 'http://www.w3.org/2000/svg';
 const L0 = referenceLayout(0);

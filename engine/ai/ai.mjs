@@ -116,7 +116,13 @@ const DEFAULT_W = {
   frontCampHold: 26,    // 佔住自家軍旗前面的行營（Lynch：超級重要的據點，絕對不能不守）
   frontCampLeave: 20,   // 沒事不要離開門前的行營——空出來就是給對方踏板
   noRevenge: 10,        // 剛折損在那格，不要馬上再送一顆回去
-  defendPull: 9,        // 有敵人逼近自家軍旗時，把棋子拉回去攔截
+  defendPull: 9,        // 有敵人逼近自家軍旗時，把棋子拉回去攔截（近距離：站到它旁邊）
+  defendReturn: 12,     // 同上的遠距離版：人在天邊也要開始往回走。
+                        // 劑量掃描（不要只看單點，這裡差點被單次比較騙到）：
+                        //   末盤防守率     0→27.2%　3→—　6→28.4%　12→31.3%　20→34.6%　40→35.1%
+                        //   隊友基準勝率   0→32.4%　3→30.5%　6→31.9%　12→32.4%　20→27.4%
+                        // 行為一路變好，但 20 開始拖累「當隊友」——回防過頭就沒人進攻了。
+                        // 12 是行為改善最多而隊友基準沒有代價的那一點。整隊對打在 6 與 20 都持平。
   defendKill: 25,       // 吃掉正在逼近軍旗的敵人
   hqRush: 40,           // 敵方大本營沒動過的那顆有一半機率是軍旗，值得衝
   flagSetup: 120,       // 走完這步，下一手就能扛已顯露的軍旗（前瞻一步）
@@ -153,7 +159,7 @@ const wOf = (memory) => memory?.W ?? W;
 const JUDGEMENT_KEYS = [
   'bigAvoid', 'probeSmall', 'bombBig', 'bombMid', 'bombIdle', 'bombFear',
   'hqRush', 'hang', 'urgencyCapture', 'camp', 'campContested', 'smallVsBig', 'backRowProbe',
-  'bombCamp', 'laneDrain', 'shieldMate', 'focusPull'];
+  'bombCamp', 'laneDrain', 'shieldMate', 'focusPull', 'defendReturn'];
 
 // 產生一種「性格」：對這幾個判斷項各給一個 0.7~1.4 倍的偏好。
 // 鐵律不在此列——它們不是偏好問題。
@@ -835,8 +841,14 @@ export function scoreMove(game, seat, memory, { from, to }) {
       if (target && threats.some(t => t.id === to)) {
         score += w.defendKill * (0.5 + urgency2);                 // 直接吃掉逼近者
       } else {
-        const closing = Math.min(...threats.map(t => dist(to, t.id)));
-        score += w.defendPull * urgency2 * Math.max(0, 3 - closing);  // 靠過去擋住
+        const c0 = Math.min(...threats.map(t => dist(from, t.id)));
+        const c1 = Math.min(...threats.map(t => dist(to, t.id)));
+        score += w.defendPull * urgency2 * Math.max(0, 3 - c1);       // 靠過去擋住
+        // ⚠ 上面那一項超過 3 就恆等於 0——**離家越遠的棋子越沒有回防的理由**，
+        //    在末盤棋子散開時等於整條防守完全失效（Lynch 實戰：
+        //    「末盤的時候左家在我進攻的時候不防守」）。
+        //    所以再補一段全盤緩坡：只要這一步有靠近威脅就給分，越近給越多。
+        if (c1 < c0) score += w.defendReturn * urgency2 * Math.max(0, 1 - c1 / 14);
       }
     }
   }

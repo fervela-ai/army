@@ -8,15 +8,26 @@
 //   remoteSession：伺服器說了算，這裡只是把動作送出去、把推回來的狀態存起來。
 // 所以這裡不做任何「先假裝走了」的樂觀更新——暗棋一旦前後端狀態不一致，
 // 玩家會看到自己的棋子跳回去，比慢半秒難受得多。
-import { SEATS } from '../engine/src/board.mjs?v=188';
-import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=188';
-import { GAME_WS } from './config.js?v=188';
-import { ensureAccount } from './account.js?v=188';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=188';
+import { SEATS } from '../engine/src/board.mjs?v=189';
+import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=189';
+import { GAME_WS } from './config.js?v=189';
+import { ensureAccount } from './account.js?v=189';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=189';
+
+// 伺服器沒告訴我這一手的結果時，從前後盤面推回來：
+// 終點現在是我的棋＝走過去了（原本有敵人就是吃掉了）、空的＝同歸於盡、還是敵人＝我死了。
+function outcomeFromBoards(before, after, seat, to) {
+  const had = before?.at?.[to];
+  const now = after?.board?.at?.[to];
+  if (now && now.seat === seat) return had ? 'defenderDead' : 'moved';
+  if (!now) return 'bothDead';
+  return 'attackerDead';
+}
 
 export async function remoteSession({ code, nickname, onState, onError } = {}) {
   const acc = await ensureAccount();
   let state = null;                  // 伺服器推來的最新狀態
+  let prev = null;                   // 上一則狀態（播動畫時畫的是這一個）
   let events = [];                   // 最近一手的事件（給動畫）
   let draft = {};                    // 佈陣階段自己那幾家的暫存陣型
   const waiters = [];                // 等下一則狀態的人
@@ -37,6 +48,7 @@ export async function remoteSession({ code, nickname, onState, onError } = {}) {
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === 'error') { onError?.(msg.message); return; }
     if (msg.type !== 'state') return;
+    prev = state;
     state = msg.state;
     events = msg.events ?? [];
     // 佈陣階段：第一次拿到自己的陣型就存成草稿，之後以本機的草稿為準
@@ -49,7 +61,8 @@ export async function remoteSession({ code, nickname, onState, onError } = {}) {
     if (state.status === 'setup')
       for (const seat of state.you?.seats ?? []) draft[seat] ??= randomLayout(seat);
     while (waiters.length) waiters.shift()(state);
-    onState?.(state);
+    // 把「上一則狀態」一起交出去：要播別人那一手的動畫，畫面得先退回他動之前。
+    onState?.({ state, prev, events });
   });
 
   ws.addEventListener('close', () => onError?.('與伺服器的連線中斷'));
@@ -141,12 +154,18 @@ export async function remoteSession({ code, nickname, onState, onError } = {}) {
     move: async (seat, from, to) => {
       const g = gameLike();
       const before = g ? { at: Object.fromEntries(g.at), turn: g.turn } : null;
+      const piece = g?.at.get(from)?.piece ?? null;
       let path = [from, to];
       try { if (g) path = movePath(g, from, to); } catch { /* 伺服器會再算一次 */ }
       send({ type: 'move', from, to });
       await nextState();
-      const mv = events.find(e => e.type === 'move');
-      return { events, move: mv ? { ...mv, path: mv.path ?? path } : null, before };
+      // ⚠ 一定要挑出**自己這一手**。舊版伺服器把三家電腦一口氣走完才推一次狀態，
+      //    events 裡是最後那家電腦的走法——拿它來播自己的動畫，就會沿著別人的路線、
+      //    用別人的勝負結果演一遍（Lynch：「我看不到自己移動的動畫」）。
+      const mine = events.find(e => e.type === 'move' && e.seat === seat);
+      const mv = mine ?? { type: 'move', seat, from, to, path,
+        outcome: outcomeFromBoards(before, state, seat, to) };
+      return { events: mine ? events : [mv], move: { ...mv, piece, path: mv.path ?? path }, before };
     },
 
     // 電腦在伺服器上自己走，前端不必問

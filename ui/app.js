@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS } from '../engine/src/board.mjs?v=188';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=188';
-import { localSession } from './session.js?v=188';
-import { remoteSession } from './remote-session.js?v=188';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=188';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=188';
-import { buildGuide } from './guide.js?v=188';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=188';
-import { createBoardView } from './board.js?v=188';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=188';
+import { SEATS } from '../engine/src/board.mjs?v=189';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=189';
+import { localSession } from './session.js?v=189';
+import { remoteSession } from './remote-session.js?v=189';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=189';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=189';
+import { buildGuide } from './guide.js?v=189';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=189';
+import { createBoardView } from './board.js?v=189';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=189';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -26,7 +26,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=188），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=189），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -221,7 +221,7 @@ async function startOnline(code) {
     session = await remoteSession({
       code,
       nickname: playerName(),
-      onState: () => { syncOnline(); },
+      onState: (u) => { queueRemote(u); },
       onError: (msg) => { addLog(msg, true); refresh(); },
     });
   } catch (e) {
@@ -234,6 +234,47 @@ async function startOnline(code) {
   selected = null; moves = []; logLines = []; busy = false; viewSeatOverride = null;
   resultShown = false; lastMove = null; recentMoves = []; drawAskedAt = -1; els.overlay.hidden = true;
   addLog(`連線對局　房間代號 ${code}`, true);
+  await syncOnline();
+}
+
+// 伺服器推來的狀態要**一則一則播完**，不能一收到就直接重畫：
+// 別人那一手也要有動畫，而動畫是有長度的。伺服器已經幫我們把每一手分開推、
+// 並在每手之間留好停頓（見 server/worker.mjs 的 driveAi），所以這裡只要排隊播。
+let remoteChain = Promise.resolve();
+const queueRemote = (u) => {
+  remoteChain = remoteChain.then(() => playRemote(u)).catch((e) => { console.error(e); });
+};
+
+let myAnim = Promise.resolve();          // 自己那一手的動畫（別人的手要等它播完才播）
+
+async function playRemote({ prev, events }) {
+  if (!online) return;
+  await myAnim.catch(() => {});         // 別讓兩段動畫同時在盤上跑
+  const mv = (events ?? []).find(e => e.type === 'move');
+  const mine = session.seatsOwnedBy?.() ?? [];
+  // 自己那一手已經在 doMove 裡播過了；大廳／佈陣階段沒有動畫可播
+  const animatable = mv && !mine.includes(mv.seat) && prev?.board && S?.status === 'playing';
+  if (animatable) {
+    const seat = viewSeat();
+    const piece = prev.board.at?.[mv.from]?.piece ?? null;   // 敵子沒有身分，就用暗棋的樣子飛
+    const path = mv.path?.length >= 2 ? mv.path : [mv.from, mv.to];
+    moves = []; selected = null;
+    // 動畫期間畫的是「他動之前」的盤面，並把移動中的那顆藏起來（由分身代勞）
+    view.render({ board: prev.board, mySeats: [seat], selected: null, moves: [],
+      revealedFlags: prev.board.revealedFlags ?? [], lastMove: null,
+      recentMoves, viewerSeat: seat, hide: [mv.from] });
+    SFX.move(path.length - 1, view.STEP_MS);
+    await view.animateMove({ from: mv.from, to: mv.to, seat: mv.seat, outcome: mv.outcome, piece, path });
+    (SFX_BY_OUTCOME[mv.outcome] ?? null)?.();
+    lastMove = { from: mv.from, to: mv.to, seat: mv.seat, path };
+    recentMoves = [...recentMoves.filter(m => m.seat !== mv.seat), lastMove].slice(-4);
+    for (const e of events) {
+      if (e.type === 'move') addLog(`${nameOf(e.seat)}：${OUTCOME_TEXT[e.outcome]}`);
+      if (e.type === 'flagRevealed') { addLog(`${nameOf(e.seat)} 司令陣亡，軍旗顯露`, true); SFX.alarm(); }
+      if (e.type === 'eliminated') { addLog(`${nameOf(e.seat)} 被扛旗，全軍覆沒`, true); SFX.flag(); }
+      if (e.type === 'end') addLog(e.team != null ? `隊${e.team === 0 ? 'A' : 'B'} 獲勝` : '和局', true);
+    }
+  }
   await syncOnline();
 }
 
@@ -465,7 +506,8 @@ async function doMove(seat, from, to) {
   // 走的過程放鐵軌聲；**輸贏的聲音要等碰到才播**。
   // 原本兩種都在動畫開始前一起播，等於棋子還沒走到就先知道結果了（Lynch 指出這是最嚴重的問題）。
   SFX.move(path.length - 1, view.STEP_MS);
-  await view.animateMove({ from, to, seat, outcome: move.outcome, piece, path });
+  myAnim = view.animateMove({ from, to, seat, outcome: move.outcome, piece, path });
+  await myAnim;
   (SFX_BY_OUTCOME[move.outcome] ?? null)?.();
 
   lastMove = { from, to, seat, path };                       // 留下痕跡，讓大家看清楚誰動了什麼

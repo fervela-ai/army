@@ -118,6 +118,17 @@ const DEFAULT_W = {
   noRevenge: 10,        // 剛折損在那格，不要馬上再送一顆回去
   defendPull: 9,        // 有敵人逼近自家軍旗時，把棋子拉回去攔截（近距離：站到它旁邊）
   homeGuard: 0,         // 家門口沒人時，把最近的一顆拉回去守（0＝關閉，等劑量掃描）
+  flagRescue: 120,      // 吃掉「下一步就能扛走我方軍旗」的那顆。
+                        // 劑量掃描（吃得掉卻沒吃 → 真的去吃的比例）：
+                        //   0→45.3%　40→63.2%　120→72.9%　300→76.4%
+                        // 隊友基準完全持平（33.2／33.0／31.9／32.2），整隊對打 1200 局 55.8%。
+                        // 取 120：行為大幅改善、沒有任何一項付代價。
+  padDeny: 0,           // 先占住敵人構得到的軍旗踏板——**量出來更糟，所以關閉**。
+                        // 門口被踩住 11.88 →（8）11.80 →（20）13.30 →（45）13.97 次／局，
+                        // 而且「命在旦夕時真的去吃」從 72.9% 掉到 63.6%。
+                        // 事後想很合理：先站上去的那顆會先被吃掉，對方反而正好站上踏板，
+                        // 而且平時要一直留人在門口，機動兵力就少了。留著程式碼與這段數字，
+                        // 免得下次又有人覺得「先占住門口聽起來很對」。
   defendReturn: 12,     // 同上的遠距離版：人在天邊也要開始往回走。
                         // 劑量掃描（不要只看單點，這裡差點被單次比較騙到）：
                         //   末盤防守率     0→27.2%　3→—　6→28.4%　12→31.3%　20→34.6%　40→35.1%
@@ -887,6 +898,17 @@ export function scoreMove(game, seat, memory, { from, to }) {
     }
   }
 
+  // ── 命在旦夕：先解決「下一步就能扛旗」的那顆 ──────────────────
+  // 吃掉它是唯一有效的手段（軍旗那格站著軍旗，擋不進去；鐵路那條路也不見得堵得住）。
+  // 這一分要壓過所有進攻誘因：讓對方扛走軍旗＝整家出局，沒有任何交換划得來。
+  if (w.flagRescue && target && enemyTarget && memory.flagKillers?.has(to))
+    score += w.flagRescue;
+  // 還沒站上來之前就先占住踏板：敵人這一步構得到那格，我就先站進去。
+  // 站著自己的子，對方要扛旗就得先吃掉它——一步之差變成兩步。
+  if (w.padDeny && !target && memory.flagPads?.has(to)
+      && (memory.threats?.get(to) ?? 0) > 0 && piece !== '工兵')
+    score += w.padDeny;
+
   // ── 心法：佔住重要點位，別人也不敢亂來吃你 ──
   if (kindOf(to) === 'center' || kindOf(to) === 'camp') score += w.keyNode;
 
@@ -1190,6 +1212,27 @@ export function chooseMove(game, seat, memory, rnd = Math.random) {
     for (const [id, o] of game.at) {
       if (TEAM_OF(o.seat) !== TEAM_OF(seat)) continue;
       if (dist(id, CENTRE) <= 3.2) { memory.centreHeld = true; break; }
+    }
+  }
+
+  // ── 命在旦夕：誰下一步就能扛走我方（或隊友）的軍旗？──────────────
+  // Lynch 2026-09-04：「敵方下一步就要奪旗了，他也不作為？
+  //                     或是，要如何防止對方走到下一步可以奪旗的位置？」
+  // ⚠ 一律用真正的合法走法算，不用幾何距離：鐵路上隔半個棋盤的子可能一步就到，
+  //   貼著大本營的子反而進不來。距離近不等於構得到。
+  memory.flagKillers = new Set();     // 敵方棋子的位置：它下一步就能扛旗
+  memory.flagPads = new Set();        // 踏板：敵人站上去就變成上面那種
+  for (const s of SEATS) {
+    if (TEAM_OF(s) !== TEAM_OF(seat) || game.eliminated.has(s)) continue;
+    const f = myFlagNode(game, s);
+    if (!f) continue;
+    for (const n of neighbours(f)) memory.flagPads.add(n);   // 大本營只走得進來，沒有鐵路
+    for (const [id, o] of game.at) {
+      if (TEAM_OF(o.seat) === TEAM_OF(seat)) continue;
+      if (kindOf(id) === 'hq') continue;                     // 大本營裡的子出不來
+      let ms = [];
+      try { ms = legalMoves(game, id); } catch { ms = []; }
+      if (ms.includes(f)) memory.flagKillers.add(id);
     }
   }
 

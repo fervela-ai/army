@@ -1,0 +1,140 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>四國軍棋 · 樣式實驗室</title>
+<!-- 美術用的預覽頁：不含任何遊戲邏輯，也不會連伺服器。
+     用途是「改 theme.css 之後不必開一局就能看到所有狀態」——
+     明棋／暗棋四家、行營、大本營、選取、可走點、上一步痕跡、側欄、結算卡。
+     ⚠ 這一頁只讀 theme.css。改樣式請只動 theme.css，class 名稱是程式的契約，不要更名。 -->
+<link rel="stylesheet" href="./theme.css?v=193">
+<style>
+  /* 這一頁自己的排版（不屬於遊戲，改它不影響正式畫面） */
+  .lab { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0,1fr) 300px; }
+  .lab h2 { font-size: 13px; margin: 0 0 6px; letter-spacing: .1em; opacity: .6; }
+  .lab-note { grid-column: 1/-1; font-size: 13px; opacity: .7; margin: 0; }
+  .lab-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sw { width: 74px; height: 46px; border-radius: 8px; display: grid; place-items: center;
+        font-size: 11px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+</style>
+<!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
+     它只給每顆棋子 class；填什麼顏色由 theme.css 決定，這裡放的是 theme.css 引用的漸層。
+     stop-color 用 CSS 變數，所以改隊色只要改 theme.css 一個地方。 -->
+<svg id="paint-defs" width="0" height="0" aria-hidden="true" focusable="false"
+     style="position:absolute; pointer-events:none"><defs>
+  <linearGradient id="faceWood" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4"/><stop offset="1" stop-color="#ead9ba"/>
+  </linearGradient>
+  <linearGradient id="face0" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-0) 10%, #fffdf4)"/>
+    <stop offset="1" stop-color="#dfe6f4" style="stop-color:color-mix(in srgb, var(--seat-0) 26%, #ead9ba)"/>
+  </linearGradient>
+  <linearGradient id="face1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-1) 10%, #fffdf4)"/>
+    <stop offset="1" stop-color="#dcecdf" style="stop-color:color-mix(in srgb, var(--seat-1) 26%, #ead9ba)"/>
+  </linearGradient>
+  <linearGradient id="face2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-2) 10%, #fffdf4)"/>
+    <stop offset="1" stop-color="#f6e0cf" style="stop-color:color-mix(in srgb, var(--seat-2) 26%, #ead9ba)"/>
+  </linearGradient>
+  <linearGradient id="face3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-3) 10%, #fffdf4)"/>
+    <stop offset="1" stop-color="#e7dcf6" style="stop-color:color-mix(in srgb, var(--seat-3) 26%, #ead9ba)"/>
+  </linearGradient>
+  <linearGradient id="hide0" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5b8bf0" style="stop-color:color-mix(in srgb, var(--seat-0) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#1d4fbf" style="stop-color:color-mix(in srgb, var(--seat-0) 82%, #000000)"/>
+  </linearGradient>
+  <linearGradient id="hide1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#4cc178" style="stop-color:color-mix(in srgb, var(--seat-1) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#0f7a37" style="stop-color:color-mix(in srgb, var(--seat-1) 82%, #000000)"/>
+  </linearGradient>
+  <linearGradient id="hide2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#f5854a" style="stop-color:color-mix(in srgb, var(--seat-2) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#c04406" style="stop-color:color-mix(in srgb, var(--seat-2) 82%, #000000)"/>
+  </linearGradient>
+  <linearGradient id="hide3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#b06ef2" style="stop-color:color-mix(in srgb, var(--seat-3) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#7420bf" style="stop-color:color-mix(in srgb, var(--seat-3) 82%, #000000)"/>
+  </linearGradient>
+</defs></svg>
+<div class="lab">
+  <p class="lab-note"><button class="btn" onclick="document.body.dataset.skin = document.body.dataset.skin ? '' : 'night'">切換日間／夜間</button>　樣式實驗室：這一頁沒有遊戲邏輯，只是把所有視覺狀態一次擺出來。改 <code>ui/theme.css</code> 後重新整理即可。</p>
+  <div>
+    <h2>棋盤（四家都有明棋與暗棋、行營、大本營、選取、可走點、上一步）</h2>
+    <svg class="board" id="board"></svg>
+  </div>
+  <div class="side">
+    <div class="panel">
+      <h2 class="panel-title">座位</h2>
+      <ul class="seats">
+        <li class="seat is-turn"><span class="seat-dot" style="background:var(--seat-0)"></span>Miles（你）<span class="seat-note">輪到你</span></li>
+        <li class="seat"><span class="seat-dot" style="background:var(--seat-1)"></span>右家（電腦）<span class="seat-note">已完成</span></li>
+        <li class="seat is-out"><span class="seat-dot" style="background:var(--seat-2)"></span>對家（電腦）<span class="seat-note">軍旗已顯露</span></li>
+        <li class="seat"><span class="seat-dot" style="background:var(--seat-3)"></span>左家（電腦）<span class="seat-note"></span></li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h2 class="panel-title">戰報</h2>
+      <ul class="log">
+        <li class="is-big">連線對局　房間代號 RZ3S23</li>
+        <li>Miles（你）：吃掉對方的棋子</li>
+        <li>右家（電腦）：移動</li>
+        <li>左家（電腦）：同歸於盡</li>
+        <li class="is-big">對家 司令陣亡，軍旗顯露</li>
+        <li>右家（電腦）：自己的棋子陣亡</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h2 class="panel-title">隊色</h2>
+      <div class="lab-swatches">
+        <div class="sw" style="background:var(--seat-0)">下家</div>
+        <div class="sw" style="background:var(--seat-1)">右家</div>
+        <div class="sw" style="background:var(--seat-2)">上家</div>
+        <div class="sw" style="background:var(--seat-3)">左家</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ov" style="position:static; background:none; backdrop-filter:none; padding:24px 0; display:block">
+  <div class="overlay-card" style="margin:0 auto">
+    <div class="overlay-emblem">🏆</div>
+    <h2 class="overlay-title is-win">獲勝</h2>
+    <p class="overlay-sub">你和對家拿下了對方兩面軍旗　共 90 步</p>
+    <p class="overlay-code">局名 260904-WGH</p>
+    <button class="btn btn--primary overlay-btn">再玩一局</button>
+  </div>
+</div>
+
+<script type="module">
+  import { createBoardView } from './board.js?v=193';
+  import { BOARD } from '../engine/src/board.mjs?v=193';
+
+  // 假的一局：每一家都放幾顆，自己那家看得到身分，其他家是暗棋。
+  const at = {};
+  const put = (id, seat, piece) => { at[id] = piece ? { seat, piece } : { seat }; };
+  const mine = ['司令','軍長','師長','旅長','團長','營長','連長','排長','工兵','炸彈','地雷','軍旗'];
+  let i = 0;
+  for (const [id, node] of BOARD.nodes) {
+    const m = /^P(\d)-r(\d)c(\d)$/.exec(id);
+    if (!m) continue;
+    const seat = Number(m[1]), r = Number(m[2]);
+    if (node.kind === 'camp') continue;
+    if (seat === 0 && r >= 4) put(id, 0, mine[i++ % mine.length]);
+    else if (seat !== 0 && r >= 5) put(id, seat, null);
+  }
+  put('P1-r3c3', 1, null); put('P3-r3c3', 3, null); put('P2-r3c3', 2, null);
+  put('M-r2c2', 0, '師長');                      // 自己的子站在中央
+  const svg = document.getElementById('board');
+  const view = createBoardView(svg, { onNodeClick(){}, onPointerUp(){} });
+  view.setBottomSeat(0);
+  view.render({
+    board: { at, revealedFlags: [2] },
+    mySeats: [0], viewerSeat: 0,
+    selected: 'P0-r4c2',
+    moves: ['P0-r3c2', 'P0-r4c1', 'P1-r5c1'],
+    lastMove: { from: 'P2-r5c3', to: 'P2-r4c3', seat: 2, path: ['P2-r5c3', 'P2-r4c3'] },
+    recentMoves: [],
+  });
+  view.setCamera('full');
+</script>

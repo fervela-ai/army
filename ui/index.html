@@ -4,9 +4,51 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋（試玩版）</title>
-<link rel="stylesheet" href="theme.css?v=193">
+<link rel="stylesheet" href="theme.css?v=194">
 </head>
 <body>
+<!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
+     它只給每顆棋子 class；填什麼顏色由 theme.css 決定，這裡放的是 theme.css 引用的漸層。
+     stop-color 用 CSS 變數，所以改隊色只要改 theme.css 一個地方。 -->
+<svg id="paint-defs" width="0" height="0" aria-hidden="true" focusable="false"
+     style="position:absolute; pointer-events:none"><defs>
+  <linearGradient id="faceWood" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4"/><stop offset="1" stop-color="#ead9ba"/>
+  </linearGradient>
+  <linearGradient id="face0" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-0) 10%, #fffdf4)"/>
+    <stop offset="1" stop-color="#dfe6f4" style="stop-color:color-mix(in srgb, var(--seat-0) 26%, #ead9ba)"/>
+  </linearGradient>
+  <linearGradient id="face1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-1) 10%, #fffdf4)"/>
+    <stop offset="1" stop-color="#dcecdf" style="stop-color:color-mix(in srgb, var(--seat-1) 26%, #ead9ba)"/>
+  </linearGradient>
+  <linearGradient id="face2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-2) 10%, #fffdf4)"/>
+    <stop offset="1" stop-color="#f6e0cf" style="stop-color:color-mix(in srgb, var(--seat-2) 26%, #ead9ba)"/>
+  </linearGradient>
+  <linearGradient id="face3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-3) 10%, #fffdf4)"/>
+    <stop offset="1" stop-color="#e7dcf6" style="stop-color:color-mix(in srgb, var(--seat-3) 26%, #ead9ba)"/>
+  </linearGradient>
+  <linearGradient id="hide0" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5b8bf0" style="stop-color:color-mix(in srgb, var(--seat-0) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#1d4fbf" style="stop-color:color-mix(in srgb, var(--seat-0) 82%, #000000)"/>
+  </linearGradient>
+  <linearGradient id="hide1" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#4cc178" style="stop-color:color-mix(in srgb, var(--seat-1) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#0f7a37" style="stop-color:color-mix(in srgb, var(--seat-1) 82%, #000000)"/>
+  </linearGradient>
+  <linearGradient id="hide2" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#f5854a" style="stop-color:color-mix(in srgb, var(--seat-2) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#c04406" style="stop-color:color-mix(in srgb, var(--seat-2) 82%, #000000)"/>
+  </linearGradient>
+  <linearGradient id="hide3" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#b06ef2" style="stop-color:color-mix(in srgb, var(--seat-3) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#7420bf" style="stop-color:color-mix(in srgb, var(--seat-3) 82%, #000000)"/>
+  </linearGradient>
+</defs></svg>
+
 <!-- 實驗中的棋路開關：用網址參數打開，預設關閉，朋友不受影響。
      例：?focus=8 ＝「集中打同一家」（量測見 engine/ai/ai.mjs 的 focusPull）。
      ⚠ 一定要放在這裡、用普通 script：模組（type=module）是延後執行的，
@@ -96,6 +138,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=193"></script>
+<script type="module" src="app.js?v=194"></script>
 </body>
 </html>

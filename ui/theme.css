@@ -5,23 +5,33 @@
      只改樣式與變數值。改壞了最多是難看，不會弄壞遊戲規則。
    ───────────────────────────────────────────────────────────── */
 :root {
-  --bg: #f4efe3;
-  --panel-bg: #fffdf7;
-  --ink: #2b2b2b;
-  --ink-soft: #6f6a60;
-  --line-road: #cbc0a8;
-  --line-rail: #3b3b3b;
+  /* 木頭質感版（2026-09-05）。方向：暖色木盤、輕陰影、字乾淨；
+     立體感全部靠陰影與漸層做，不用 3D、不加圖檔（多一個檔就多一次載入）。 */
+  --bg: #efe6d4;
+  --panel-bg: #fffcf4;
+  --panel-line: #e3d7bd;
+  --ink: #241f18;
+  --ink-soft: #756c5c;
+  /* 盤上的字（棋子、盤邊對照表）永遠是「木頭上的墨」，跟介面文字分開兩套變數。
+     這樣之後要把介面改成深色，盤上的字也不會跟著變白看不見。 */
+  --board-ink: #2a2118;
+  --board-ink-soft: #6b5a41;
+  --line-road: #b39c76;
+  --line-rail: #33291d;
+  /* 棋盤木紋：三層疊出來——上方受光、細木紋、底色 */
+  --wood-top: #e6cda4;
+  --wood-bottom: #cdad79;
   --rail-width: 5px;
   --road-width: 1.6px;
 
-  --seat-0: #2563eb;   /* 下家 */
-  --seat-1: #16a34a;   /* 右家 */
-  --seat-2: #ea580c;   /* 上家 */
-  --seat-3: #9333ea;   /* 左家 */
+  --seat-0: #2f5fd0;   /* 下家　藍 */
+  --seat-1: #17864a;   /* 右家　綠 */
+  --seat-2: #d15a12;   /* 上家　橘 */
+  --seat-3: #7c3fc4;   /* 左家　紫 */
 
-  --node-fill: #ffffff;
-  --camp-stroke: #dc2626;
-  --hq-fill: #fff8dc;
+  --node-fill: #fffdf6;
+  --camp-stroke: #c22a1f;
+  --hq-fill: #fdf0cf;
   /* 暗棋不用統一的灰色，直接填該家的隊色，才分得出誰是誰 */
   --hidden-ink: #ffffff;
   --select-ring: #f59e0b;
@@ -47,6 +57,26 @@
   --rank-flag: #C77800;   /* 軍旗　金 */
 }
 
+/* ── 夜間版（實驗中）─────────────────────────────────────────
+   深色的桌面會讓木頭棋盤浮出來，那正是 Lynch 看上的那個象棋站的作法。
+   只要在 <body> 加 data-skin="night" 就生效，盤上的字用的是 --board-ink，
+   不受影響。想預設打開就把這一段的選擇器換成 :root。
+   ui/style-lab.html 右上角有切換鈕，可以直接比較。 */
+body[data-skin="night"] {
+  --bg: #17130f;
+  --panel-bg: #221c16;
+  --panel-line: #382e24;
+  --ink: #f2e9d9;
+  --ink-soft: #a3947e;
+  --line-road: #a68d68;
+}
+body[data-skin="night"] .btn { background: #2b241c; border-color: #3d3226; }
+body[data-skin="night"] .btn:hover { background: #362d23; }
+body[data-skin="night"] .panel { box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 24px rgba(0,0,0,.35); }
+body[data-skin="night"] .board { box-shadow: 0 18px 44px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.12); }
+body[data-skin="night"] .log li { border-bottom-color: rgba(255,255,255,.07); }
+body[data-skin="night"] .setupbar { border-color: var(--panel-line); }
+
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
@@ -66,12 +96,25 @@ body {
 .toggle { font-size: 13px; color: var(--ink-soft); }
 .btn {
   font: inherit; padding: 6px 12px; border-radius: var(--radius);
-  border: 1px solid var(--line-road); background: var(--panel-bg); cursor: pointer;
+  border: 1px solid var(--panel-line); background: var(--panel-bg); cursor: pointer;
+  color: var(--ink); box-shadow: 0 1px 1px rgba(90,64,28,.07);
+  transition: background .12s ease, transform .06s ease;
 }
-.btn:hover { background: #f0ebdf; }
+.btn:hover { background: #f7f0e0; }
+.btn:active { transform: translateY(1px); }
 
 .stage { display: grid; place-items: center; min-height: 0; }
-.board { width: 100%; height: 100%; max-height: 100%;
+.board {
+  width: 100%; height: 100%; max-height: 100%;
+  /* 木頭桌面：受光的高光 + 細木紋 + 底色漸層。全部是 CSS 漸層，沒有圖檔要載。 */
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,.55), rgba(255,255,255,0) 62%),
+    repeating-linear-gradient(93deg, rgba(102,66,26,.075) 0 2px, rgba(102,66,26,0) 2px 6px),
+    repeating-linear-gradient(87deg, rgba(255,255,255,.05) 0 1px, rgba(255,255,255,0) 1px 9px),
+    linear-gradient(180deg, var(--wood-top), var(--wood-bottom));
+  border-radius: 16px;
+  box-shadow: 0 14px 34px rgba(70,48,22,.20), inset 0 0 0 1px rgba(255,255,255,.35),
+              inset 0 -18px 30px rgba(90,60,25,.10);
   /* 單指平移、雙指縮放都交還給瀏覽器（manipulation 只關掉「連點兩下放大」的延遲）。
      放大之後要能拖著看棋盤的別的地方——這需要單指平移，所以佈陣的拖曳互換
      必須拿掉，改成純點選（Lynch 的解法）。兩者不能並存。 */
@@ -81,26 +124,39 @@ body {
 .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
 .panel {
   background: var(--panel-bg); border-radius: var(--radius);
-  padding: 10px 12px; border: 1px solid #e7dfcc; min-height: 0; display: flex; flex-direction: column;
+  padding: 10px 12px; border: 1px solid var(--panel-line); min-height: 0;
+  display: flex; flex-direction: column;
+  box-shadow: 0 1px 2px rgba(90,64,28,.06), 0 6px 16px rgba(90,64,28,.05);
 }
-.panel-title { font-size: 13px; margin: 0 0 8px; color: var(--ink-soft); font-weight: 600; }
+.panel-title { font-size: 12px; margin: 0 0 8px; color: var(--ink-soft); font-weight: 600;
+  letter-spacing: .12em; text-transform: none; }
 .seats { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .seat { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .seat-dot { width: 10px; height: 10px; border-radius: 50%; }
 .seat.is-turn { font-weight: 700; }
 .seat.is-out { opacity: .45; text-decoration: line-through; }
 .seat-note { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
-.log { list-style: none; margin: 0; padding: 0; overflow-y: auto; font-size: 13px; display: grid; gap: 4px; }
-.log li { color: var(--ink-soft); }
+.log { list-style: none; margin: 0; padding: 0; overflow-y: auto; font-size: 13px;
+  display: grid; gap: 0; font-variant-numeric: tabular-nums;
+  /* 底部淡出：讓「還有更多」看得出來，而不是被硬切一刀 */
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 18px), transparent);
+}
+.log li { color: var(--ink-soft); padding: 4px 2px; line-height: 1.45;
+  border-bottom: 1px solid rgba(120,95,55,.10); }
+.log li:last-child { border-bottom: 0; }
 .log li.is-big { color: var(--ink); font-weight: 600; }
 
 /* 棋盤元素 */
-.rail { stroke: var(--line-rail); stroke-width: var(--rail-width); fill: none; }
+.rail { stroke: var(--line-rail); stroke-width: var(--rail-width); fill: none;
+  stroke-linecap: round; stroke-linejoin: round; }
 .road { stroke: var(--line-road); stroke-width: var(--road-width); }
+/* 點位：木頭上的象牙色格子，下緣一道極輕的陰影就有浮起來的感覺 */
 .node { fill: var(--node-fill); stroke-width: 2.5; }
+.layer-nodes { filter: drop-shadow(0 1px 0.5px rgba(80,55,25,.28)); }
 .node--camp { stroke: var(--camp-stroke); stroke-width: 4; }
 .node--hq { fill: var(--hq-fill); stroke-width: 3; }
-.node--center { stroke: #555; }
+.node--center { stroke: #6b5a41; }
 .piece { cursor: default; }
 .piece--mine { cursor: pointer; }
 .piece-label { font-size: var(--piece-font-size); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
@@ -134,20 +190,28 @@ body {
 /* 看得到身分的棋子：底色帶一點該家的顏色，跟米色棋盤拉開對比。
    原本一律用近乎白色的 #f2f6f4，Lynch 實機回報「我方顏色有點淺，對比不足」。
    ⚠ 暗棋（piece--hidden）的整塊實色規則在下面，選擇器更精確，不會被這條蓋掉。 */
-.piece-box { fill: var(--piece-fill); stroke-width: 3; }
-.piece--seat0 .piece-box { fill: #DFE9FC; }
-.piece--seat1 .piece-box { fill: #DFF1E4; }
-.piece--seat2 .piece-box { fill: #FBE7DA; }
-.piece--seat3 .piece-box { fill: #ECE2FA; }
-.piece-label { font-weight: 700; fill: var(--ink); }
-/* 暗棋填上各家的隊色，一眼分得出是哪一家（自己的棋子維持白底彩框） */
-.piece--hidden.piece--seat0 .piece-box { fill: var(--seat-0); }
-.piece--hidden.piece--seat1 .piece-box { fill: var(--seat-1); }
-.piece--hidden.piece--seat2 .piece-box { fill: var(--seat-2); }
-.piece--hidden.piece--seat3 .piece-box { fill: var(--seat-3); }
+/* 棋子的立體感：**整層下一次陰影**，不要每顆各自 filter——
+   一盤上百顆，逐顆做 filter 在手機上會掉幀（棋子是會動的，那最有感）。 */
+.layer-pieces { filter: drop-shadow(0 2px 1.5px rgba(70,45,18,.35)); }
+.piece-box { fill: url(#faceWood); stroke-width: 3; }
+/* 看得到身分的棋子：木頭面帶一點該家的顏色（漸層定義在 index.html 的 #paint-defs）。
+   Lynch 實機回報過「我方顏色有點淺，對比不足」，所以下緣的顏色壓得比上緣重。 */
+.piece--seat0 .piece-box { fill: url(#face0); }
+.piece--seat1 .piece-box { fill: url(#face1); }
+.piece--seat2 .piece-box { fill: url(#face2); }
+.piece--seat3 .piece-box { fill: url(#face3); }
+.piece-label { font-weight: 700; fill: var(--board-ink); }
+/* 暗棋填該家的隊色（上淺下深＝有厚度），一眼分得出是哪一家 */
+.piece--hidden.piece--seat0 .piece-box { fill: url(#hide0); }
+.piece--hidden.piece--seat1 .piece-box { fill: url(#hide1); }
+.piece--hidden.piece--seat2 .piece-box { fill: url(#hide2); }
+.piece--hidden.piece--seat3 .piece-box { fill: url(#hide3); }
 
 .piece-label { font-size: var(--piece-font-size); text-anchor: middle; dominant-baseline: central;
-  pointer-events: none; fill: var(--ink); }
+  pointer-events: none; fill: var(--board-ink); }
+/* 軍階符號的浮雕：一道往下的暗影加一道往上的亮邊，看起來像壓印在木頭上。
+   同樣掛在整組 badge 上，不逐個圖形做。 */
+.badge, .piece-label { filter: drop-shadow(0 0.6px 0 rgba(255,255,255,.75)) drop-shadow(0 -0.5px 0 rgba(60,40,15,.30)); }
 .ins--star { fill: var(--rank-star); }
 .ins--plum circle { fill: var(--rank-plum); }
 .ins--bar { fill: var(--rank-bar); }
@@ -493,9 +557,9 @@ body {
 .board.has-refs .layer-refs { display: block; }
 /* 盤邊說明的字級（單位是棋盤座標，桌機約 1.3 倍才是實際像素）。
    Lynch：「桌機我覺得說明文字都可以再更大一點」。 */
-.ref-h { font-size: 22px; font-weight: 700; fill: var(--ink); }
-.ref-t { font-size: 19px; fill: var(--ink); }
-.ref-s { font-size: 17px; fill: var(--ink-soft); }
+.ref-h { font-size: 22px; font-weight: 700; fill: var(--board-ink); }
+.ref-t { font-size: 19px; fill: var(--board-ink); }
+.ref-s { font-size: 17px; fill: var(--board-ink-soft); }
 .layer-refs .ins { opacity: .95; }
 
 .demo-play.is-on { background: var(--seat-0); border-color: var(--seat-0); color: #fff; }

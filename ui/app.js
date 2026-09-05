@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=194';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=194';
-import { localSession } from './session.js?v=194';
-import { remoteSession } from './remote-session.js?v=194';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=194';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=194';
-import { buildGuide } from './guide.js?v=194';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=194';
-import { createBoardView } from './board.js?v=194';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=194';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=195';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=195';
+import { localSession } from './session.js?v=195';
+import { remoteSession } from './remote-session.js?v=195';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=195';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=195';
+import { buildGuide } from './guide.js?v=195';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=195';
+import { createBoardView } from './board.js?v=195';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=195';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=194），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=195），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -1321,20 +1321,59 @@ els.restart.addEventListener('click', async () => {
   }
   newGame();
 });
-// 進站先問代稱，問完才開局（第一次才會問，之後記住）
-// 第一次進站的人不知道規則說明在哪，直接跳給他看；看過一次就不再跳。
+// 第一次進站的人不知道規則說明在哪，開局時直接跳給他看；看過一次就不再跳。
 const SEEN_GUIDE = 'army-online:seen-guide';
-// 帶著邀請連結進來的人，直接進那一間房，不要先開一局單人的。
-const joinCode = new URLSearchParams(location.search).get('room');
-const boot = joinCode
-  ? askNickname().then(() => startOnline(joinCode.toUpperCase()))
-  : askNickname().then(newGame);
 
-boot.then(() => {
+// ── 進場畫面 ────────────────────────────────────────────────
+// Lynch 2026-09-05：「我希望我四國軍棋進場畫面也要是類似這樣好看的。」
+// 進來先看到它，按了才開局——原本是一進站就自動開一局單人的，
+// 那等於還沒說「這是什麼」就把人丟進棋盤。
+// 背景那盤棋是真的棋盤（同一支 board.js），所以配色一改它也跟著改，不必維護一張圖。
+function paintLandingBoard() {
+  const svg = document.getElementById('landingBoard');
+  if (!svg) return;
+  try {
+    const view = createBoardView(svg, { onNodeClick() {}, onPointerUp() {} });
+    const at = {};
+    for (const [id, node] of BOARD.nodes) {
+      const m = /^P(\d)-r(\d)c\d$/.exec(id);
+      if (!m || node.kind === 'camp') continue;
+      const seat = Number(m[1]);
+      if (Number(m[2]) >= 4) at[id] = { seat };            // 全部畫成暗棋：這是暗棋遊戲的樣子
+    }
+    view.setBottomSeat(0);
+    view.render({ board: { at, revealedFlags: [] }, mySeats: [], viewerSeat: 0,
+      selected: null, moves: [], recentMoves: [], lastMove: null });
+    view.setCamera('full');
+  } catch { /* 純裝飾，畫不出來就算了，不能擋住進場 */ }
+}
+
+const landing = document.getElementById('landing');
+const hideLanding = () => { if (landing) landing.hidden = true; };
+async function enterGame(kind) {
+  hideLanding();
+  await askNickname();
+  if (kind === 'online') { openOnlineMenu(); return; }
+  await newGame();
   if (localStorage.getItem(SEEN_GUIDE)) return;
   try { localStorage.setItem(SEEN_GUIDE, '1'); } catch { /* 存不下不影響 */ }
   openGuide();
   // 第一次進站的人直接開始播。三個沒玩過的朋友的回饋是「還沒看完說明頭就暈了」——
   // 要他們自己一步一步按，等於還是在讀說明書；讓它自己演一遍才像「先看一下怎麼玩」。
   setTimeout(() => document.querySelector('.demo-play')?.click(), 400);
-});
+}
+document.getElementById('ldSolo')?.addEventListener('click', () => enterGame('solo'));
+document.getElementById('ldOnline')?.addEventListener('click', () => enterGame('online'));
+document.getElementById('ldGuide')?.addEventListener('click', () => openGuide());
+const ldVer = document.getElementById('ldVer');
+if (ldVer) ldVer.textContent = `v${UI_VERSION}`;
+
+// 帶著邀請連結進來的人，直接進那一間房——不要先擋一個進場畫面。
+const joinCode = new URLSearchParams(location.search).get('room');
+if (joinCode) {
+  hideLanding();
+  askNickname().then(() => startOnline(joinCode.toUpperCase()));
+} else {
+  if (landing) landing.hidden = false;
+  paintLandingBoard();
+}

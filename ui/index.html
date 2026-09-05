@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋（試玩版）</title>
-<link rel="stylesheet" href="theme.css?v=194">
+<link rel="stylesheet" href="theme.css?v=195">
 </head>
 <body>
 <!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
@@ -59,6 +59,33 @@
     if (isFinite(f) && f > 0) globalThis.__AI_W__ = { focusPull: f };
   })();
 </script>
+
+<!-- 進場畫面。Lynch 2026-09-05：「我希望我四國軍棋進場畫面也要是類似這樣好看的。」
+     背景那盤棋是**真的棋盤**（board.js 畫的），不是圖檔——所以不必多載一張大圖，
+     配色改了它也會跟著改。帶 ?room= 進來的人會直接跳過這一頁進房間。 -->
+<div class="landing" id="landing" hidden>
+  <div class="landing-art" aria-hidden="true"><svg id="landingBoard"></svg></div>
+  <div class="landing-inner">
+    <span class="landing-chip">四人暗棋 · 線上對戰</span>
+    <h1 class="landing-title">四國軍棋</h1>
+    <p class="landing-sub">你和對家一隊，拿下敵方兩面軍旗就贏。<br>和三家電腦對弈，或把連結丟給朋友。</p>
+    <div class="landing-cards">
+      <button class="landing-card" id="ldSolo">
+        <span class="landing-card-icon">♟</span>
+        <span><b>開始遊戲</b><small>單人練習 · 你對三家電腦</small></span>
+      </button>
+      <button class="landing-card" id="ldOnline">
+        <span class="landing-card-icon">⚔</span>
+        <span><b>多人連線</b><small>邀請好友 · 雙人合作 / 雙人敵對 / 四人局</small></span>
+      </button>
+      <button class="landing-card landing-card--ghost" id="ldGuide">
+        <span class="landing-card-icon">?</span>
+        <span><b>新手指南</b><small>沒玩過？三分鐘看懂怎麼玩</small></span>
+      </button>
+    </div>
+    <p class="landing-foot">Fervela.ai　<span id="ldVer"></span></p>
+  </div>
+</div>
 <div class="app">
   <header class="topbar">
     <h1 class="title">四國軍棋</h1>
@@ -138,6 +165,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=194"></script>
+<script type="module" src="app.js?v=195"></script>
 </body>
 </html>

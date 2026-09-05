@@ -81,6 +81,8 @@ body[data-skin="night"] .setupbar { border-color: var(--panel-line); }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font-family: var(--font);
+  /* 全站禁止假造粗體／斜體：沒有那個字面時寧可用最接近的真字面，也不要描兩次 */
+  font-synthesis: none; -webkit-font-synthesis: none;
   /* 棋盤是拿來拖棋子的，不是拿來選字的。不擋的話拖曳會變成框選文字，點擊判定跟著壞掉。 */
   -webkit-user-select: none; user-select: none;
 }
@@ -210,7 +212,12 @@ body {
 .piece--seat1 .piece-box { fill: url(#face1); }
 .piece--seat2 .piece-box { fill: url(#face2); }
 .piece--seat3 .piece-box { fill: url(#face3); }
-.piece-label { font-weight: 800; fill: var(--board-ink); }
+/* ⚠ 字重不要開到 800。蘋方（PingFang TC）沒有 800 這個字面，
+   瀏覽器就會**自己假造粗體**——做法是把同一個字略微位移再描一次，
+   看起來就是「重疊」與模糊（Lynch 一眼看出來：「會不會是有重疊造成？」）。
+   600（Semibold）是蘋方真的有的字面，配上 font-synthesis: none 之後，
+   任何系統都只會用真的字面，不會再假造。 */
+.piece-label { font-weight: 600; fill: var(--board-ink); }
 /* 暗棋填該家的隊色（上淺下深＝有厚度），一眼分得出是哪一家 */
 .piece--hidden.piece--seat0 .piece-box { fill: url(#hide0); }
 .piece--hidden.piece--seat1 .piece-box { fill: url(#hide1); }
@@ -570,7 +577,7 @@ body {
 .board.has-refs .layer-refs { display: block; }
 /* 盤邊說明的字級（單位是棋盤座標，桌機約 1.3 倍才是實際像素）。
    Lynch：「桌機我覺得說明文字都可以再更大一點」。 */
-.ref-h { font-size: 22px; font-weight: 700; fill: var(--board-ink); }
+.ref-h { font-size: 22px; font-weight: 600; fill: var(--board-ink); }
 .ref-t { font-size: 19px; fill: var(--board-ink); }
 .ref-s { font-size: 17px; fill: var(--board-ink-soft); }
 .layer-refs .ins { opacity: .95; }

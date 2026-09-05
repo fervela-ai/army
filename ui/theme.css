@@ -14,7 +14,7 @@
   --ink-soft: #756c5c;
   /* 盤上的字（棋子、盤邊對照表）永遠是「木頭上的墨」，跟介面文字分開兩套變數。
      這樣之後要把介面改成深色，盤上的字也不會跟著變白看不見。 */
-  --board-ink: #2a2118;
+  --board-ink: #1d1710;
   --board-ink-soft: #6b5a41;
   --line-road: #b39c76;
   --line-rail: #33291d;
@@ -39,7 +39,7 @@
 
   --radius: 10px;
   --font: "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
-  --piece-font-size: 15px;
+  --piece-font-size: 16.5px;
 
   /* 軍階符號顏色（CYC 風格：將官星、校官梅花、尉官槓） */
   --piece-fill: #f2f6f4;
@@ -210,7 +210,7 @@ body {
 .piece--seat1 .piece-box { fill: url(#face1); }
 .piece--seat2 .piece-box { fill: url(#face2); }
 .piece--seat3 .piece-box { fill: url(#face3); }
-.piece-label { font-weight: 700; fill: var(--board-ink); }
+.piece-label { font-weight: 800; fill: var(--board-ink); }
 /* 暗棋填該家的隊色（上淺下深＝有厚度），一眼分得出是哪一家 */
 .piece--hidden.piece--seat0 .piece-box { fill: url(#hide0); }
 .piece--hidden.piece--seat1 .piece-box { fill: url(#hide1); }
@@ -219,10 +219,12 @@ body {
 
 .piece-label { font-size: var(--piece-font-size); text-anchor: middle; dominant-baseline: central;
   pointer-events: none; fill: var(--board-ink); }
-/* 軍階符號的浮雕：一道零模糊的亮邊，看起來像壓印在木頭上。
-   **文字不要加任何濾鏡**——15px 的中文字一經濾鏡就糊。 */
-.badge { filter: drop-shadow(0 0.7px 0 rgba(255,255,255,.8)); }
-.piece-label { filter: none; paint-order: stroke fill; }
+/* ⚠ 棋子上的東西**一律不加濾鏡**。
+   Lynch 連續兩次回報字不夠銳利，最後把軍階符號那道亮邊也拿掉才乾淨——
+   濾鏡會把整個群組（含文字）先點陣化再貼回去，小字一定糊。
+   立體感只保留在方框的零模糊陰影上（那是形狀，不是文字）。 */
+.badge { filter: none; }
+.piece-label { filter: none; text-rendering: optimizeLegibility; }
 .ins--star { fill: var(--rank-star); }
 .ins--plum circle { fill: var(--rank-plum); }
 .ins--bar { fill: var(--rank-bar); }

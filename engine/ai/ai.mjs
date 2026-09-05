@@ -1113,7 +1113,13 @@ export function scoreMove(game, seat, memory, { from, to }) {
   // 用重扣分而不是全面禁止——軍旗就住在後兩排，堵死就永遠贏不了（試過，67%→25~51%）。
   if (target && enemyTarget && rank >= 6 && isBackRow(to) && 可能是這家的雷
       && !memory.moved?.has(to) && !memory.notMine?.has(to) && !memory.weakKnown?.has(to))
-    score -= w.bigVsUntested;
+    score -= w.bigVsUntested * ((rank / 6) ** 2);
+  // ⚠ 懲罰要**隨棋子的價值放大**，不能一視同仁。
+  //    原本旅長(6) 與司令(9) 扣一樣多，於是實戰看到隊友把司令送進沒測過的後兩排、
+  //    當場撞死在地雷上（Lynch 2026-09-05 那局 260905-3D4 第 71 手，
+  //    他的電腦隊友就是這樣丟掉司令的）。
+  //    Lynch 的原話：「正常人玩，不會大人撞死在地雷。一定是工兵拆過才衝。」
+  //    平方之後：旅長 1.0、師長 1.36、軍長 1.78、司令 2.25 倍。
 
   const untestedBackRow = isBackRow(to) && 可能是這家的雷
     && !memory.weakKnown?.has(to) && deadly === 0 && bigThreat === 0;

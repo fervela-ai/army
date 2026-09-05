@@ -78,6 +78,10 @@ body[data-skin="night"] .log li { border-bottom-color: rgba(255,255,255,.07); }
 body[data-skin="night"] .setupbar { border-color: var(--panel-line); }
 
 * { box-sizing: border-box; }
+/* ⚠️ 手機下拉會觸發瀏覽器的「拉一下重新整理」，一整局就沒了（Lynch 實測回報）。
+   contain 只擋住捲動溢位傳給瀏覽器外框，頁面內部照樣捲得動。
+   放 html 與 body 兩層是因為各家瀏覽器認的層級不一樣。 */
+html, body { overscroll-behavior-y: contain; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font-family: var(--font);

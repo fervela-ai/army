@@ -6,17 +6,17 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=198';
-import { gameStats } from '../engine/src/game-stats.mjs?v=198';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=198';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=200';
+import { gameStats } from '../engine/src/game-stats.mjs?v=200';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=200';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=198';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=198';
-import { VALUE } from '../engine/ai/lookahead.mjs?v=198';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=198';
-import { searchMove } from '../engine/ai/search.mjs?v=198';
+} from '../engine/src/room.mjs?v=200';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=200';
+import { VALUE } from '../engine/ai/lookahead.mjs?v=200';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=200';
+import { searchMove } from '../engine/ai/search.mjs?v=200';
 
 // controllers：四個座位分別由誰控制。'ai' 或玩家代號（'A'、'B'）。
 // 所有模式都只是這張表的不同填法——引擎那層本來就是用「座位→玩家」在跑的：

@@ -57,6 +57,7 @@ const DEFAULT_W = {
   engIdleLate: 6,       // 殘局解禁
   engReveal: 12,        // 走出普通棋子做不到的彎＝自報身分
   engFlagMine: 200,     // 拆「緊鄰敵方大本營」的疑似地雷——工兵最重要的一件事
+  engFlagApproach: 25,  // 朝那顆雷走的坡度（線性，× max(0, 14 - 距離)）
   engFlagRun: 30,       // 朝那顆護旗雷靠近的每一步（不給的話工兵走到一半就被別的分數帶走）
   engProbe: 6,
   engCamp: 8,           // 工兵躲進行營（Lynch：很好的一步，保護自己）          // 去測疑似地雷（會再乘上地雷機率）
@@ -654,6 +655,19 @@ export function scoreMove(game, seat, memory, { from, to }) {
       const gain = near(from) - near(to);
       if (gain > 0) score += gain * w.engFlagRun;      // 每靠近一步都有分，直到拆掉為止
       if (flagMines.includes(to)) score += w.engFlagMine;
+      // ⚠ 只有「踏上去那一步」給 200 是不夠的：六步之外的工兵永遠拿不到那 200，
+      //    於是它一步都不會走。這跟 defendPull 當年那個「超過 3 就恆等於 0」是同一種病。
+      //    Lynch 實戰 260905-JB5 就是這樣和局的：右家的軍旗第 29 手就顯露了，
+      //    隊友的連長從第 55 手起就站在旁邊，但三個踏板全是疑似地雷（他自己的司令
+      //    才剛死在其中一個上），除了工兵誰都不准碰——而兩顆工兵在家裡待到局終。
+      //    所以要給一條「往那顆雷走」的緩坡，工兵才會出發。
+      if (w.engFlagApproach && flagMines.length) {
+        const d0 = Math.min(...flagMines.map(t => dist(from, t)));
+        const d1 = Math.min(...flagMines.map(t => dist(to, t)));
+        // 形狀跟 flagRush 一樣用線性（1 - d/14 那種形狀在六步外只剩一半，
+        // 要壓過別人的一百多分就得把權重灌到 400，那是形狀不對而不是權重不夠）。
+        if (d1 < d0) score += w.engFlagApproach * Math.max(0, 14 - d1);
+      }
     }
     // 工兵停在敵方軍旗旁不只是為了拆雷，更是威嚇（Lynch）：
     // 對方動後兩排來擋＝告訴我那顆不是地雷；不能吃我＝我直接賭贏；

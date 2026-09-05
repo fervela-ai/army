@@ -19,8 +19,8 @@
   --line-road: #b39c76;
   --line-rail: #33291d;
   /* 棋盤木紋：三層疊出來——上方受光、細木紋、底色 */
-  --wood-top: #e6cda4;
-  --wood-bottom: #cdad79;
+  --wood-top: #e2c69c;
+  --wood-bottom: #d3b586;
   --rail-width: 5px;
   --road-width: 1.6px;
 
@@ -91,6 +91,12 @@ body {
 }
 .topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; }
 .title { font-size: 18px; margin: 0; }
+/* 標題＝回首頁。做成按鈕但長得像標題，滑過去才提示可以按。 */
+.title-home {
+  font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0;
+  cursor: pointer; letter-spacing: inherit;
+}
+.title-home:hover { color: var(--seat-0); }
 .turn { font-weight: 700; }
 .controls { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .toggle { font-size: 13px; color: var(--ink-soft); }
@@ -108,10 +114,11 @@ body {
   width: 100%; height: 100%; max-height: 100%;
   /* 木頭桌面：受光的高光 + 細木紋 + 底色漸層。全部是 CSS 漸層，沒有圖檔要載。 */
   background:
-    radial-gradient(120% 80% at 50% -10%, rgba(255,255,255,.55), rgba(255,255,255,0) 62%),
-    repeating-linear-gradient(93deg, rgba(102,66,26,.075) 0 2px, rgba(102,66,26,0) 2px 6px),
-    repeating-linear-gradient(87deg, rgba(255,255,255,.05) 0 1px, rgba(255,255,255,0) 1px 9px),
-    linear-gradient(180deg, var(--wood-top), var(--wood-bottom));
+    /* 一層很淡的木紋（原本兩層條紋太明顯，Lynch：「漸層色我覺得沒有很好看」），
+       加一點點四周壓暗，讓中間自然亮起來——不用刺眼的白色高光。 */
+    radial-gradient(105% 78% at 50% 42%, rgba(255,255,255,.18), rgba(120,84,40,.10) 78%, rgba(90,60,25,.16) 100%),
+    repeating-linear-gradient(91deg, rgba(104,70,30,.035) 0 3px, rgba(104,70,30,0) 3px 11px),
+    linear-gradient(178deg, var(--wood-top), var(--wood-bottom));
   border-radius: 16px;
   box-shadow: 0 14px 34px rgba(70,48,22,.20), inset 0 0 0 1px rgba(255,255,255,.35),
               inset 0 -18px 30px rgba(90,60,25,.10);
@@ -190,9 +197,12 @@ body {
 /* 看得到身分的棋子：底色帶一點該家的顏色，跟米色棋盤拉開對比。
    原本一律用近乎白色的 #f2f6f4，Lynch 實機回報「我方顏色有點淺，對比不足」。
    ⚠ 暗棋（piece--hidden）的整塊實色規則在下面，選擇器更精確，不會被這條蓋掉。 */
-/* 棋子的立體感：**整層下一次陰影**，不要每顆各自 filter——
-   一盤上百顆，逐顆做 filter 在手機上會掉幀（棋子是會動的，那最有感）。 */
-.layer-pieces { filter: drop-shadow(0 2px 1.5px rgba(70,45,18,.35)); }
+/* 棋子的立體感。
+   ⚠ 原本把 filter 掛在整層（.layer-pieces）上，結果**文字被一起送進濾鏡點陣化，
+     小字就糊掉了**（Lynch 實機：「我方棋子我覺得字很糊」）。
+   現在只給方框本身一道**零模糊**的實心陰影：文字不在濾鏡裡，所以維持向量的銳利度，
+   而且零模糊的陰影比高斯模糊便宜得多，一盤上百顆也不掉幀。 */
+.piece-box { filter: drop-shadow(0 1.5px 0 rgba(74,48,18,.42)); }
 .piece-box { fill: url(#faceWood); stroke-width: 3; }
 /* 看得到身分的棋子：木頭面帶一點該家的顏色（漸層定義在 index.html 的 #paint-defs）。
    Lynch 實機回報過「我方顏色有點淺，對比不足」，所以下緣的顏色壓得比上緣重。 */
@@ -209,9 +219,10 @@ body {
 
 .piece-label { font-size: var(--piece-font-size); text-anchor: middle; dominant-baseline: central;
   pointer-events: none; fill: var(--board-ink); }
-/* 軍階符號的浮雕：一道往下的暗影加一道往上的亮邊，看起來像壓印在木頭上。
-   同樣掛在整組 badge 上，不逐個圖形做。 */
-.badge, .piece-label { filter: drop-shadow(0 0.6px 0 rgba(255,255,255,.75)) drop-shadow(0 -0.5px 0 rgba(60,40,15,.30)); }
+/* 軍階符號的浮雕：一道零模糊的亮邊，看起來像壓印在木頭上。
+   **文字不要加任何濾鏡**——15px 的中文字一經濾鏡就糊。 */
+.badge { filter: drop-shadow(0 0.7px 0 rgba(255,255,255,.8)); }
+.piece-label { filter: none; paint-order: stroke fill; }
 .ins--star { fill: var(--rank-star); }
 .ins--plum circle { fill: var(--rank-plum); }
 .ins--bar { fill: var(--rank-bar); }

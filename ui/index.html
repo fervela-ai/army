@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋（試玩版）</title>
-<link rel="stylesheet" href="theme.css?v=195">
+<link rel="stylesheet" href="theme.css?v=196">
 </head>
 <body>
 <!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
@@ -88,7 +88,9 @@
 </div>
 <div class="app">
   <header class="topbar">
-    <h1 class="title">四國軍棋</h1>
+    <!-- 標題就是回首頁的入口（Lynch：「這頁回不到首頁？」）。
+         不另外加按鈕：頂欄在手機上已經很擠，多一顆就會換行、把棋盤往下推。 -->
+    <h1 class="title"><button class="title-home" id="home" title="回首頁">四國軍棋</button></h1>
     <!-- 版本號要看得到：回報問題時才分得出他看的是哪一版（Lynch 要求）。
          內容由 tools/bump-ui-version.sh 改的 ?v= 帶進來，不必另外維護。 -->
     <span class="uiver" id="uiVer" title="介面版本"></span>
@@ -165,6 +167,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=195"></script>
+<script type="module" src="app.js?v=196"></script>
 </body>
 </html>

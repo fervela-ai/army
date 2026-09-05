@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=195';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=195';
-import { localSession } from './session.js?v=195';
-import { remoteSession } from './remote-session.js?v=195';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=195';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=195';
-import { buildGuide } from './guide.js?v=195';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=195';
-import { createBoardView } from './board.js?v=195';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=195';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=196';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=196';
+import { localSession } from './session.js?v=196';
+import { remoteSession } from './remote-session.js?v=196';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=196';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=196';
+import { buildGuide } from './guide.js?v=196';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=196';
+import { createBoardView } from './board.js?v=196';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=196';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -21,14 +21,14 @@ const SAVE_KEY = 'army-online:layouts:v2';
 const GAMES_KEY = 'army-online:games';
 const PLAYER_KEY = 'army-online:player';      // 玩家代稱，問過一次就記住
 const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中斷也不會遺失        // 保留最近幾局的完整棋譜，供事後分析   // { 名稱: { seat, layout, savedAt } }
-const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn',
+const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn', 'home',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayCode', 'overlayAgain',
   'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=195），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=196），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -1362,6 +1362,19 @@ async function enterGame(kind) {
   // 要他們自己一步一步按，等於還是在讀說明書；讓它自己演一遍才像「先看一下怎麼玩」。
   setTimeout(() => document.querySelector('.demo-play')?.click(), 400);
 }
+// 回首頁：把進行中的局收乾淨（連線局要斷線，不然舊房間還在推狀態），再把首頁叫出來。
+document.getElementById('home')?.addEventListener('click', () => {
+  if (S?.status === 'playing' && !confirm('回首頁會離開這一局，確定嗎？')) return;
+  clearInterval(ticker);
+  if (online) {
+    try { session?.close?.(); } catch { /* 已經斷了就算了 */ }
+    online = null; remoteChain = Promise.resolve();
+    if (new URLSearchParams(location.search).has('room'))
+      history.replaceState(null, '', location.pathname);
+  }
+  els.overlay.hidden = true;
+  if (landing) landing.hidden = false;
+});
 document.getElementById('ldSolo')?.addEventListener('click', () => enterGame('solo'));
 document.getElementById('ldOnline')?.addEventListener('click', () => enterGame('online'));
 document.getElementById('ldGuide')?.addEventListener('click', () => openGuide());

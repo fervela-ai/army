@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=201';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=201';
-import { localSession } from './session.js?v=201';
-import { remoteSession } from './remote-session.js?v=201';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=201';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=201';
-import { buildGuide } from './guide.js?v=201';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=201';
-import { createBoardView } from './board.js?v=201';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=201';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=202';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=202';
+import { localSession } from './session.js?v=202';
+import { remoteSession } from './remote-session.js?v=202';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=202';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=202';
+import { buildGuide } from './guide.js?v=202';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=202';
+import { createBoardView } from './board.js?v=202';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=202';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=201），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=202），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -121,14 +121,15 @@ let gameCode = newGameCode();
 const playerName = () => localStorage.getItem(PLAYER_KEY) || '';
 
 // 進站先問一次代稱，之後每局自動帶入。問了才知道棋譜是誰下的。
-function askNickname() {
+function askNickname({ force = false } = {}) {
   return new Promise((resolve) => {
-    if (playerName()) { resolve(); return; }
+    if (playerName() && !force) { resolve(); return; }
     const wrap = document.createElement('div');
     const input = document.createElement('input');
     input.className = 'modal-input';
     input.placeholder = '例如：老王、阿明';
     input.maxLength = 12;
+    input.value = playerName();          // 改名時先帶入現在的代稱
     // 第一眼先講這是什麼、可以馬上玩，再問代稱。
     // 一進站就要人填名字、還馬上提「用來改進電腦棋力」，看起來像在收資料（外部回饋）。
     const lead = document.createElement('div');
@@ -143,7 +144,7 @@ function askNickname() {
       title: '四國軍棋',
       body: wrap,
       actions: [{
-        label: '開始', primary: true, onClick: () => {
+        label: force ? '改好了' : '開始', primary: true, onClick: () => {
           localStorage.setItem(PLAYER_KEY, input.value.trim().slice(0, 12) || '無名氏');
           closeModal();
           resolve();
@@ -1223,7 +1224,12 @@ function openOnlineMenu() {
     wrap.append(b);
   }
   showModal({ title: '多人連線', body: wrap,
-    actions: [{ label: '取消', primary: true, onClick: closeModal }] });
+    // 取消之後要回得去：從首頁按進來時還沒有任何一局，直接關掉會停在一個空棋盤
+    // （Lynch 實測：「按取消會變成這樣，感覺怪怪的」）。
+    actions: [{ label: '取消', primary: true, onClick: () => {
+      closeModal();
+      if (!session && landing) landing.hidden = false;
+    } }] });
 }
 els.online.addEventListener('click', openOnlineMenu);
 
@@ -1380,6 +1386,16 @@ document.getElementById('ldOnline')?.addEventListener('click', () => enterGame('
 document.getElementById('ldGuide')?.addEventListener('click', () => openGuide());
 const ldVer = document.getElementById('ldVer');
 if (ldVer) ldVer.textContent = `v${UI_VERSION}`;
+
+// 代稱：顯示在首頁，點一下就能改（Lynch：「要有可以改名的位置」）。
+// 放在首頁而不是對局畫面——改名是開局前的事，對局中改會讓棋譜裡同一局出現兩個名字。
+const ldName = document.getElementById('ldName');
+const paintName = () => { if (ldName) ldName.textContent = playerName() || '（還沒取名）'; };
+paintName();
+document.getElementById('ldRename')?.addEventListener('click', async () => {
+  await askNickname({ force: true });
+  paintName();
+});
 
 // 帶著邀請連結進來的人，直接進那一間房——不要先擋一個進場畫面。
 const joinCode = new URLSearchParams(location.search).get('room');

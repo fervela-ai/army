@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=207';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=207';
-import { localSession } from './session.js?v=207';
-import { remoteSession } from './remote-session.js?v=207';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=207';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=207';
-import { buildGuide } from './guide.js?v=207';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=207';
-import { createBoardView } from './board.js?v=207';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=207';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=208';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=208';
+import { localSession } from './session.js?v=208';
+import { remoteSession } from './remote-session.js?v=208';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=208';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=208';
+import { buildGuide } from './guide.js?v=208';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=208';
+import { createBoardView } from './board.js?v=208';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=208';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=207），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=208），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -364,9 +364,12 @@ function renderLobby(info) {
     team.textContent = TEAM_OF(seat) === 0 ? '隊A' : '隊B';
     const label = document.createElement('span');
     label.className = `lobby-seat ind-seat${seat}`;
-    // 用棋盤上的方位命名（畫面上就是這樣擺的），不要用「你這方」——
-    // 玩家自己可能坐在任何一家，那個名字會對不上。
-    label.textContent = ['下家', '右家', '上家', '左家'][seat];
+    // ⚠ 不要用「下家／上家」這種方位命名。
+    //    開局之後畫面會轉到「自己那一家在最下面」（每個人都是），
+    //    所以坐 3 號位的人在自己畫面上看到的也是下方——方位名稱一定會對不上。
+    //    Lynch 2026-09-06：「我希望每個人都是下家…選的時候可以選，
+    //    但實際玩的時候視角要是下家。」（視角本來就是這樣，是這裡的名字在誤導。）
+    label.textContent = ['1 號位', '2 號位', '3 號位', '4 號位'][seat];
     const name = document.createElement('span');
     name.className = 'lobby-name';
     name.textContent = who
@@ -398,7 +401,8 @@ function renderLobby(info) {
   wrap.append(table);
   const tip = document.createElement('div');
   tip.className = 'modal-note';
-  tip.textContent = '一個人可以坐一到兩個位置，但兩個位置必須同一隊（上下一隊、左右一隊）。';
+  tip.textContent = '1、3 號位一隊，2、4 號位一隊——同隊的兩家坐在對面。'
+    + '不論你坐哪一位，開局後你的棋子都會在畫面最下方。';
   wrap.append(tip);
   if (lobbyError) {
     const err = document.createElement('div');

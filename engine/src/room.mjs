@@ -10,7 +10,10 @@ import { MODES, SETUP_SECONDS_BY_SEATS, MAX_SEATS_PER_PLAYER, seatsOfTeam } from
 import { defaultLayout } from './default-layout.mjs';
 import { createGame, applyMove } from './game.mjs';
 
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // 去掉易混淆的 I/L/O/0/1
+// 房號＝六位數字。Lynch 2026-09-06：「太難打字。可以不要這麼複雜的房間名嗎？不能都數字嗎？」
+// 數字最好打（手機鍵盤直接是數字鍵）、最好念（電話裡報得清楚）、也不會有 I/O/0/1 那種混淆。
+// 一百萬組對同時開著的房間數量而言綽綽有餘。
+const CODE_ALPHABET = '0123456789';
 export const makeInviteCode = (rnd = Math.random, len = 6) =>
   Array.from({ length: len }, () => CODE_ALPHABET[Math.floor(rnd() * CODE_ALPHABET.length)]).join('');
 

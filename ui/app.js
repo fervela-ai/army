@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=203';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=203';
-import { localSession } from './session.js?v=203';
-import { remoteSession } from './remote-session.js?v=203';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=203';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=203';
-import { buildGuide } from './guide.js?v=203';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=203';
-import { createBoardView } from './board.js?v=203';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=203';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=204';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=204';
+import { localSession } from './session.js?v=204';
+import { remoteSession } from './remote-session.js?v=204';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=204';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=204';
+import { buildGuide } from './guide.js?v=204';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=204';
+import { createBoardView } from './board.js?v=204';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=204';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=203），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=204），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -196,7 +196,7 @@ async function newGame() {
     online = null;
     remoteChain = Promise.resolve();
     // 網址上的 ?room= 也要清掉，否則重新載入又跳回那一間
-    if (new URLSearchParams(location.search).has('room'))
+    if (location.hash || new URLSearchParams(location.search).has('room'))
       history.replaceState(null, '', location.pathname);
   }
   session = null;               // controllers() 要退回本機那張表，不能沿用連線層的座位
@@ -322,7 +322,9 @@ const textBlock = (t) => { const d = document.createElement('div'); d.className 
 // 大廳：誰坐哪、邀請連結、開始。每次伺服器推狀態就整個重畫（人少、很便宜）。
 function renderLobby(info) {
   const wrap = document.createElement('div');
-  const link = `${location.origin}${location.pathname}?room=${info.code}`;
+  // 用 # 而不是 ?room=：短、好念、好打，而且靜態站不需要任何路由設定就吃得下。
+  // Lynch：「我希望網址精簡一點，譬如不要有 ?room 這樣太難打字。」
+  const link = `${location.origin}${location.pathname}#${info.code}`;
 
   wrap.append(textBlock('把下面這個連結傳給朋友，他點開就會進到這一間。'));
   const box = document.createElement('div');
@@ -365,9 +367,11 @@ function renderLobby(info) {
       // 已經有位子的人再按，是「一人控兩家」而不是換位子——按鈕上要講明白。
       // Lynch 三台電腦連進同一間房時就踩到：有人不小心坐了兩個位置，
       // 四個位置看起來全滿，而舊的大廳畫面看不出哪個是自己的。
-      b.textContent = mine.length ? '也坐這裡（一人控兩家）' : '坐這裡';
+      b.textContent = '坐這裡';
       b.addEventListener('click', () => { lobbyError = ''; session.send({ type: 'seat', seat }); });
-      row.append(b);
+      // 一個人只能坐一個位置（Lynch 2026-09-06）。已經有位子就不給第二顆按鈕——
+      // 人不夠時空位會在開局時自動由同隊的人接手，不需要自己去點。
+      if (!mine.length) row.append(b);
     } else if (mine.includes(seat)) {
       // 坐錯了要換得回來——原本一坐下就沒有退路
       const b = document.createElement('button');
@@ -1413,7 +1417,7 @@ document.getElementById('home')?.addEventListener('click', () => {
   if (online) {
     try { session?.close?.(); } catch { /* 已經斷了就算了 */ }
     online = null; remoteChain = Promise.resolve();
-    if (new URLSearchParams(location.search).has('room'))
+    if (location.hash || new URLSearchParams(location.search).has('room'))
       history.replaceState(null, '', location.pathname);
   }
   els.overlay.hidden = true;
@@ -1436,10 +1440,12 @@ document.getElementById('ldRename')?.addEventListener('click', async () => {
 });
 
 // 帶著邀請連結進來的人，直接進那一間房——不要先擋一個進場畫面。
-const joinCode = new URLSearchParams(location.search).get('room');
+// 三種寫法都吃：#123456（現在發出去的）、?room=（舊連結）、?r=（手打的簡寫）。
+const params = new URLSearchParams(location.search);
+const joinCode = (location.hash.replace(/^#/, '') || params.get('room') || params.get('r') || '').trim();
 if (joinCode) {
   hideLanding();
-  askNickname().then(() => startOnline(joinCode.toUpperCase()));
+  askNickname().then(() => startOnline(joinCode.toUpperCase()));   // 舊的英數房號要轉大寫，純數字不受影響
 } else {
   if (landing) landing.hidden = false;
   paintLandingBoard();

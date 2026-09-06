@@ -152,6 +152,11 @@ body {
   -webkit-tap-highlight-color: transparent; }
 
 .side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+/* ⚠ 只有「戰報」那一塊可以被壓縮，座位表不行。
+   座位表被壓到的時候會**少顯示一家**——Lynch 實機：斷線回來之後
+   「胖球小可愛可以玩，但我的介面看不到他」，其實是第四列被切掉了。 */
+.side > .turnbanner, .side > .panel { flex: 0 0 auto; }
+.side > .panel:has(.log) { flex: 1 1 auto; min-height: 120px; }
 .panel {
   background: var(--panel-bg); border-radius: var(--radius);
   padding: 10px 12px; border: 1px solid var(--panel-line); min-height: 0;

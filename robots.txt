@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://army.fervela.ai/sitemap.xml

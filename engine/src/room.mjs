@@ -55,7 +55,12 @@ const playersOfTeam = (room, team) =>
 
 export function join(room, { playerId, nickname }) {
   const existing = room.players.get(playerId);
-  if (existing) { existing.connected = true; return existing; }      // 斷線重連
+  if (existing) {                                                    // 斷線重連
+    existing.connected = true;
+    // 重連時順便更新暱稱：玩家可能在大廳改了代稱（Lynch 2026-09-06）。
+    if (nickname) existing.nickname = cleanNickname(nickname);
+    return existing;
+  }
   if (room.status !== 'lobby') throw new Error('遊戲已開始，無法加入');
   const p = { id: playerId, nickname: cleanNickname(nickname), connected: true };
   room.players.set(playerId, p);

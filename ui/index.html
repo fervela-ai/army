@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋</title>
-<link rel="stylesheet" href="theme.css?v=206">
+<link rel="stylesheet" href="theme.css?v=207">
 </head>
 <body>
 <!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
@@ -84,7 +84,7 @@
       </button>
     </div>
     <p class="landing-foot">
-      <button class="landing-name" id="ldRename" title="改代稱">代稱 <b id="ldName">—</b> ✎</button>
+      <button class="landing-name" id="ldRename" title="改代稱">你的代稱：<b id="ldName">—</b><span class="landing-name-edit">改</span></button>
     </p>
     <p class="landing-foot">Fervela.ai　<span id="ldVer"></span></p>
   </div>
@@ -127,6 +127,7 @@
     <span class="setup-timer" id="setupTimer"></span>
     <span class="setup-hint" id="setupHint">點兩顆自己的棋子即可互換位置</span>
     <span class="setup-actions">
+      <button class="btn" id="btnName">代稱</button>
       <button class="btn" id="btnRandom">隨機重排</button>
       <button class="btn" id="btnSave">儲存陣型</button>
       <button class="btn" id="btnLoad">讀取陣型</button>
@@ -170,6 +171,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=206"></script>
+<script type="module" src="app.js?v=207"></script>
 </body>
 </html>

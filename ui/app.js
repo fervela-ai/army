@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=206';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=206';
-import { localSession } from './session.js?v=206';
-import { remoteSession } from './remote-session.js?v=206';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=206';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=206';
-import { buildGuide } from './guide.js?v=206';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=206';
-import { createBoardView } from './board.js?v=206';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=206';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=207';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=207';
+import { localSession } from './session.js?v=207';
+import { remoteSession } from './remote-session.js?v=207';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=207';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=207';
+import { buildGuide } from './guide.js?v=207';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=207';
+import { createBoardView } from './board.js?v=207';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=207';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -22,13 +22,13 @@ const GAMES_KEY = 'army-online:games';
 const PLAYER_KEY = 'army-online:player';      // 玩家代稱，問過一次就記住
 const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中斷也不會遺失        // 保留最近幾局的完整棋譜，供事後分析   // { 名稱: { seat, layout, savedAt } }
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn', 'home',
-  'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
+  'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnName', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayCode', 'overlayAgain',
   'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=206），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=207），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -239,6 +239,7 @@ async function startOnline(code) {
       nickname: playerName(),
       onState: (u) => { queueRemote(u); },
       onError: (msg) => {
+        if (msg === ignoreLobbyError) { ignoreLobbyError = ''; return; }
         addLog(msg, true);
         if (lobbyOpen) { lobbyError = msg; renderLobby(session.roomInfo()); return; }
         refresh();
@@ -315,6 +316,7 @@ let lobbyOpen = false;
 // 大廳裡被伺服器拒絕的訊息要顯示在大廳上。原本只寫進戰報，而戰報被大廳視窗蓋住，
 // 玩家按了沒反應又看不到理由（Lynch：「我怎麼好像不能選位置」）。
 let lobbyError = '';
+let ignoreLobbyError = '';        // 已知可以忽略的一則錯誤（例如舊伺服器不認得 rename）
 const closeModalIfLobby = () => { if (lobbyOpen) { lobbyOpen = false; closeModal(); } };
 
 const textBlock = (t) => { const d = document.createElement('div'); d.className = 'modal-lead'; d.textContent = t; return d; };
@@ -336,6 +338,17 @@ function renderLobby(info) {
     box.textContent = '已複製　' + link;
   });
   wrap.append(box);
+
+  const me = document.createElement('div');
+  me.className = 'lobby-me';
+  const meName = document.createElement('span');
+  meName.innerHTML = `你的代稱：<b>${playerName() || '（還沒取名）'}</b>`;
+  const meBtn = document.createElement('button');
+  meBtn.className = 'btn';
+  meBtn.textContent = '改代稱';
+  meBtn.addEventListener('click', renameMe);
+  me.append(meName, meBtn);
+  wrap.append(me);
 
   const table = document.createElement('div');
   table.className = 'lobby-seats';
@@ -1465,10 +1478,21 @@ if (ldVer) ldVer.textContent = `v${UI_VERSION}`;
 const ldName = document.getElementById('ldName');
 const paintName = () => { if (ldName) ldName.textContent = playerName() || '（還沒取名）'; };
 paintName();
-document.getElementById('ldRename')?.addEventListener('click', async () => {
+// 改代稱：首頁、佈陣列、大廳三個地方都叫這一支（Lynch：「不要只在首頁」）。
+// 在房間裡的話還要通知伺服器，否則別人看到的還是舊名字。
+async function renameMe() {
   await askNickname({ force: true });
   paintName();
-});
+  if (online && session?.send) {
+    // 舊版伺服器不認得 rename，會回一句錯誤——那不是玩家的問題，不要拿去嚇他。
+    ignoreLobbyError = '不認識的動作';
+    session.send({ type: 'rename', nickname: playerName() });
+  }
+  if (lobbyOpen) renderLobby(session.roomInfo());
+  refresh?.();
+}
+document.getElementById('ldRename')?.addEventListener('click', renameMe);
+els.btnName?.addEventListener('click', renameMe);
 
 // 帶著邀請連結進來的人，直接進那一間房——不要先擋一個進場畫面。
 // 三種寫法都吃：#123456（現在發出去的）、?room=（舊連結）、?r=（手打的簡寫）。

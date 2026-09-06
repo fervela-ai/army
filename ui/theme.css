@@ -302,7 +302,9 @@ body {
 .modal-card { background: var(--panel-bg); border-radius: 16px; padding: 22px 24px; min-width: 340px;
   max-width: 460px; box-shadow: 0 18px 46px rgba(0,0,0,.3); }
 .modal-title { margin: 0 0 14px; font-size: 17px; }
-.modal-body { display: grid; gap: 8px; max-height: 46vh; max-height: 46dvh; overflow-y: auto; }
+/* 46vh 太矮：多人連線視窗有三個開房選項＋輸入房號那一段，會被切在半空中。
+   （Lynch 加了「加入遊戲」之後就頂到了。）拉到 62vh，還是會捲，只是不會一開就被切。 */
+.modal-body { display: grid; gap: 8px; max-height: 62vh; max-height: 62dvh; overflow-y: auto; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 .modal input[type="text"] { font: inherit; padding: 9px 12px; border-radius: 10px;
   border: 1px solid var(--line-road); width: 100%; background: #fff; color: var(--ink); }
@@ -571,6 +573,14 @@ body {
 }
 
 .modal-lead { font-size: 15px; line-height: 1.7; margin-bottom: 10px; }
+/* 視窗裡的輸入框（取代稱、輸入房號）。之前完全沒有樣式，長得像瀏覽器預設。 */
+.modal-input {
+  font: inherit; font-size: 16px;            /* 16px 以下 iOS 會自動放大整頁 */
+  width: 100%; padding: 10px 12px; margin: 10px 0;
+  border: 1px solid var(--panel-line); border-radius: 10px;
+  background: #fff; color: var(--ink);
+}
+.modal-input:focus { outline: 2px solid var(--seat-0); outline-offset: 1px; border-color: transparent; }
 .report-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;
   background: #fff; border: 1px solid var(--line-road); border-radius: 8px; padding: 10px 12px;
   margin: 8px 0; user-select: text; }
@@ -699,3 +709,8 @@ body {
 .lobby-team--0 { color: var(--seat-0); }
 .lobby-team--1 { color: var(--seat-1); }
 .lobby-error { margin-top: 10px; color: var(--camp-stroke); font-size: 13px; }
+
+/* 多人連線視窗裡的「加入房間」 */
+.join-box { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--panel-line); }
+.join-row { display: flex; gap: 8px; margin-top: 8px; }
+.join-input { flex: 1; margin: 0; font-variant-numeric: tabular-nums; letter-spacing: .18em; }

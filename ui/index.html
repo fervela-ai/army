@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>四國軍棋</title>
-<link rel="stylesheet" href="theme.css?v=208">
+<link rel="stylesheet" href="theme.css?v=209">
 </head>
 <body>
 <!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
@@ -161,6 +161,9 @@
   </div>
 
   <aside class="side">
+    <!-- 「換你囉」的橫幅（Lynch 要求）。不論輪到誰都佔一樣的高度——
+         輪到別人時顯示「等 XX 出手」，所以它出現／消失不會推動下面的面板。 -->
+    <div class="turnbanner" id="turnBanner"></div>
     <section class="panel">
       <h2 class="panel-title">座位</h2>
       <ul class="seats" id="seats"></ul>
@@ -171,6 +174,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=208"></script>
+<script type="module" src="app.js?v=209"></script>
 </body>
 </html>

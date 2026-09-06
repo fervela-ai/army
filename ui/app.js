@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=208';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=208';
-import { localSession } from './session.js?v=208';
-import { remoteSession } from './remote-session.js?v=208';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=208';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=208';
-import { buildGuide } from './guide.js?v=208';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=208';
-import { createBoardView } from './board.js?v=208';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=208';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=209';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=209';
+import { localSession } from './session.js?v=209';
+import { remoteSession } from './remote-session.js?v=209';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=209';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=209';
+import { buildGuide } from './guide.js?v=209';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=209';
+import { createBoardView } from './board.js?v=209';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=209';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,11 +24,11 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn', 'home',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnName', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayCode', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'turnBanner', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=208），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=209），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -200,6 +200,7 @@ async function newGame() {
       history.replaceState(null, '', location.pathname);
   }
   session = null;               // controllers() 要退回本機那張表，不能沿用連線層的座位
+  myLayoutSeat = null;
   gameCode = newGameCode();
   els.gameCode.textContent = gameCode;      // 留在畫面上，截圖才帶得走
   // 電腦用心法佈陣（三角雷護旗、大子後接工兵再接炸彈）。
@@ -227,6 +228,7 @@ async function newGame() {
 // 跟 newGame 幾乎一樣，差別只在 session 換成 remoteSession、而且不由前端驅動電腦。
 // 座位、暱稱、誰先走全部由伺服器決定，這裡只負責「拿到狀態就重畫」。
 let online = null;                 // { code } ——非 null 代表這局是連線局
+let myLayoutSeat = null;           // myLayout 現在裝的是哪一家的陣型
 
 async function startOnline(code) {
   clearInterval(ticker);
@@ -306,8 +308,14 @@ async function syncOnline() {
   if (info.status === 'lobby') { renderLobby(info); return; }
   closeModalIfLobby();
   setupSeat = session.seatsOwnedBy()[0] ?? 0;
-  if (!Object.keys(myLayout ?? {}).length || S?.status !== info.status)
+  // ⚠ 一定要在「座位換了」的時候重抓陣型。
+  //    只看 status 有沒有變是不夠的：先玩過一局單人再進房間的人，myLayout 還是上一局
+  //    0 號位的陣型，而他這局坐 1 號位——每點一顆自己的棋子都會被判成
+  //    「只能排自己的陣地」，整個佈陣階段動不了（Lynch 實機：有一台電腦無法佈陣）。
+  if (myLayoutSeat !== setupSeat || !Object.keys(myLayout ?? {}).length || S?.status !== info.status) {
     myLayout = await session.layout(setupSeat);
+    myLayoutSeat = setupSeat;
+  }
   await sync();
   if (info.status === 'setup') startTicker();
 }
@@ -740,11 +748,37 @@ function pieceBrief(piece) {
   ];
 }
 
+let wasMyTurn = false;
+// 輪到自己要一眼看得出來（Lynch：「輪到自己，我覺得看不太出來」）。
+// 做法刻意避開「多一塊東西」：標題那行本來就在，只是換色＋加一顆會呼吸的點；
+// 棋盤用 inset 的外框發光。兩者都不佔版面，手機上棋盤不會被推動。
+function paintTurn(myTurn) {
+  els.turn.classList.toggle('is-my-turn', myTurn);
+  els.board.classList.toggle('is-my-turn', myTurn);
+  // 側邊那條橫幅：Lynch 要「換你囉」這種話出現在旁邊，不是只有標題變色。
+  if (els.turnBanner) {
+    els.turnBanner.classList.toggle('is-my-turn', myTurn);
+    els.turnBanner.textContent =
+      S.status === 'setup' ? '佈陣中'
+      : S.status === 'ended' ? '這一局結束了'
+      : myTurn ? '換你囉'
+      : S.turn != null ? `等 ${nameOf(S.turn)} 出手…`
+      : '';
+  }
+  // 連線版才提示聲：那時你可能在做別的事，等對手等很久。
+  if (myTurn && !wasMyTurn && online && els.soundOn.checked) SFX.select();
+  wasMyTurn = myTurn;
+}
+
 function refresh() {
   const inSetup = S.status === 'setup';
   const seat = viewSeat();
   view.setBottomSeat(seat);
   els.setupbar.hidden = !inSetup;
+
+  paintTurn(S.status === 'playing' && S.turn != null && !isAI(S.turn)
+    && (online ? (session.seatsOwnedBy?.() ?? []).includes(S.turn)
+               : ownerOfSeat(S.turn) === activeHuman));
 
   const board = S.displayBoard;
   view.render({
@@ -1252,8 +1286,11 @@ function openReport() {
 // 多人連線：選一種玩法就開一間房，拿到邀請連結丟給朋友。
 // 三種對應到伺服器的兩個參數：mode 決定是雙人還是四人局，fill 決定空位由誰補。
 const ONLINE_MODES = [
-  { label: '四人局（找三位朋友）', mode: 'four', fill: 'mate',
-    desc: '人不滿也可以開始，空位由同隊的人接手' },
+  // Lynch 2026-09-06：「三人玩的時候，沒玩的直接當 AI，不是一人玩兩家。」
+  // 原本空位是給同隊的人接手（一人控兩家），但那樣他會看到隊友那家的全部棋子，
+  // 等於整局多一半的資訊——三個人在線上玩的時候那很奇怪。改成電腦補位。
+  { label: '四人局（找三位朋友）', mode: 'four', fill: 'ai',
+    desc: '人不滿也可以開始，空位由電腦補上' },
   { label: '雙人合作（兩人一隊打電腦）', mode: 'two', fill: 'ai',
     desc: '你和朋友同一隊，對面兩家是電腦' },
   { label: '雙人敵對（各控一整隊）', mode: 'two', fill: 'mate',

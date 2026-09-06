@@ -103,7 +103,24 @@ body {
   cursor: pointer; letter-spacing: inherit;
 }
 .title-home:hover { color: var(--seat-0); }
-.turn { font-weight: 700; }
+.turn { font-weight: 700; padding: 4px 12px; border-radius: 999px; border: 1px solid transparent; }
+/* 輪到自己：標題那行整個亮起來，還有一顆會呼吸的點。
+   padding 與邊框「平常就留著」，所以亮起來的時候版面不會跳。 */
+.turn.is-my-turn {
+  background: var(--seat-0); color: #fff; border-color: transparent;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--seat-0) 22%, transparent);
+}
+.turn.is-my-turn::before {
+  content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #fff; margin-right: 8px; vertical-align: 1px;
+  animation: turn-pulse 1.4s ease-in-out infinite;
+}
+@keyframes turn-pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+/* 棋盤本身也發光（inset，不改變任何尺寸） */
+.board.is-my-turn {
+  box-shadow: 0 14px 34px rgba(70,48,22,.20), inset 0 0 0 3px var(--seat-0),
+              inset 0 0 26px color-mix(in srgb, var(--seat-0) 22%, transparent);
+}
 .controls { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .toggle { font-size: 13px; color: var(--ink-soft); }
 .btn {
@@ -723,3 +740,18 @@ body {
 .join-box { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--panel-line); }
 .join-row { display: flex; gap: 8px; margin-top: 8px; }
 .join-input { flex: 1; margin: 0; font-variant-numeric: tabular-nums; letter-spacing: .18em; }
+
+/* 「換你囉」橫幅：高度固定，不論輪到誰都在，所以不會把下面的面板推來推去 */
+.turnbanner {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; border-radius: var(--radius); font-size: 15px; font-weight: 600;
+  color: var(--ink-soft); background: var(--panel-bg); border: 1px solid var(--panel-line);
+}
+.turnbanner.is-my-turn {
+  color: #fff; background: var(--seat-0); border-color: transparent; font-size: 17px;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--seat-0) 35%, transparent);
+}
+.turnbanner.is-my-turn::before {
+  content: ''; width: 9px; height: 9px; border-radius: 50%; background: #fff;
+  animation: turn-pulse 1.4s ease-in-out infinite;
+}

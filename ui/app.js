@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=202';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=202';
-import { localSession } from './session.js?v=202';
-import { remoteSession } from './remote-session.js?v=202';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=202';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=202';
-import { buildGuide } from './guide.js?v=202';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=202';
-import { createBoardView } from './board.js?v=202';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=202';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=203';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=203';
+import { localSession } from './session.js?v=203';
+import { remoteSession } from './remote-session.js?v=203';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=203';
+import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=203';
+import { buildGuide } from './guide.js?v=203';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=203';
+import { createBoardView } from './board.js?v=203';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=203';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=202），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=203），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -238,7 +238,11 @@ async function startOnline(code) {
       code,
       nickname: playerName(),
       onState: (u) => { queueRemote(u); },
-      onError: (msg) => { addLog(msg, true); refresh(); },
+      onError: (msg) => {
+        addLog(msg, true);
+        if (lobbyOpen) { lobbyError = msg; renderLobby(session.roomInfo()); return; }
+        refresh();
+      },
     });
   } catch (e) {
     online = null;
@@ -308,6 +312,9 @@ async function syncOnline() {
 }
 
 let lobbyOpen = false;
+// 大廳裡被伺服器拒絕的訊息要顯示在大廳上。原本只寫進戰報，而戰報被大廳視窗蓋住，
+// 玩家按了沒反應又看不到理由（Lynch：「我怎麼好像不能選位置」）。
+let lobbyError = '';
 const closeModalIfLobby = () => { if (lobbyOpen) { lobbyOpen = false; closeModal(); } };
 
 const textBlock = (t) => { const d = document.createElement('div'); d.className = 'modal-lead'; d.textContent = t; return d; };
@@ -330,27 +337,58 @@ function renderLobby(info) {
 
   const table = document.createElement('div');
   table.className = 'lobby-seats';
+  const mine = info.you?.seats ?? [];
   for (const seat of SEATS) {
     const row = document.createElement('div');
     row.className = 'lobby-row';
     const who = info.seats?.[seat];
+    // 隊別要寫出來：對家才是隊友，而「兩個位置必須同一隊」這條規則
+    // 不寫清楚的話，玩家只會看到一句被拒絕的錯誤（Lynch：「我怎麼好像不能選位置」）。
+    const team = document.createElement('span');
+    team.className = `lobby-team lobby-team--${TEAM_OF(seat)}`;
+    team.textContent = TEAM_OF(seat) === 0 ? '隊A' : '隊B';
     const label = document.createElement('span');
     label.className = `lobby-seat ind-seat${seat}`;
-    label.textContent = ['你這方', '右家', '對家', '左家'][seat];
+    // 用棋盤上的方位命名（畫面上就是這樣擺的），不要用「你這方」——
+    // 玩家自己可能坐在任何一家，那個名字會對不上。
+    label.textContent = ['下家', '右家', '上家', '左家'][seat];
     const name = document.createElement('span');
     name.className = 'lobby-name';
-    name.textContent = who ? (who.ai ? `${who.nickname}（電腦）` : who.nickname) : '（空位）';
-    row.append(label, name);
+    name.textContent = who
+      ? (who.ai ? `${who.nickname}（電腦）` : who.nickname + (mine.includes(seat) ? '（你）' : ''))
+      : '（空位）';
+    if (mine.includes(seat)) row.classList.add('is-me');
+    row.append(team, label, name);
     if (!who) {
       const b = document.createElement('button');
       b.className = 'btn';
-      b.textContent = '坐這裡';
-      b.addEventListener('click', () => session.send({ type: 'seat', seat }));
+      // 已經有位子的人再按，是「一人控兩家」而不是換位子——按鈕上要講明白。
+      // Lynch 三台電腦連進同一間房時就踩到：有人不小心坐了兩個位置，
+      // 四個位置看起來全滿，而舊的大廳畫面看不出哪個是自己的。
+      b.textContent = mine.length ? '也坐這裡（一人控兩家）' : '坐這裡';
+      b.addEventListener('click', () => { lobbyError = ''; session.send({ type: 'seat', seat }); });
+      row.append(b);
+    } else if (mine.includes(seat)) {
+      // 坐錯了要換得回來——原本一坐下就沒有退路
+      const b = document.createElement('button');
+      b.className = 'btn';
+      b.textContent = '離座';
+      b.addEventListener('click', () => { lobbyError = ''; session.send({ type: 'unseat', seat }); });
       row.append(b);
     }
     table.append(row);
   }
   wrap.append(table);
+  const tip = document.createElement('div');
+  tip.className = 'modal-note';
+  tip.textContent = '一個人可以坐一到兩個位置，但兩個位置必須同一隊（上下一隊、左右一隊）。';
+  wrap.append(tip);
+  if (lobbyError) {
+    const err = document.createElement('div');
+    err.className = 'lobby-error';
+    err.textContent = lobbyError;
+    wrap.append(err);
+  }
 
   const actions = [];
   if (info.isHost) actions.push({ label: '開始遊戲', primary: true,

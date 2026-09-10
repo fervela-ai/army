@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=210';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=210';
-import { localSession } from './session.js?v=210';
-import { remoteSession } from './remote-session.js?v=210';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=210';
-import { RECORD_ENDPOINT, AI_VERSION } from './config.js?v=210';
-import { buildGuide } from './guide.js?v=210';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=210';
-import { createBoardView } from './board.js?v=210';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=210';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=214';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=214';
+import { localSession } from './session.js?v=214';
+import { remoteSession } from './remote-session.js?v=214';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=214';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=214';
+import { buildGuide } from './guide.js?v=214';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=214';
+import { createBoardView } from './board.js?v=214';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=214';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=210），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=214），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -214,7 +214,7 @@ async function newGame() {
 
   hint('');
   addLog({
-    solo: '單人練習：你對三家電腦',
+    solo: '單人練習：你和電腦隊友一隊，對抗兩家電腦',
     coop: '雙人合作：你和夥伴同一隊，對抗兩家電腦',
     duelAI: '雙人敵對：你和對手各帶一個電腦隊友',
     duelTeam: '雙人敵對：兩邊各控一整隊',
@@ -296,7 +296,8 @@ async function playRemote({ prev, events }) {
     lastMove = { from: mv.from, to: mv.to, seat: mv.seat, path };
     recentMoves = [...recentMoves.filter(m => m.seat !== mv.seat), lastMove].slice(-4);
     for (const e of events) {
-      if (e.type === 'move') addLog(`${nameOf(e.seat)}：${OUTCOME_TEXT[e.outcome]}`);
+      if (e.type === 'move') addLog(`${nameOf(e.seat)}：${OUTCOME_TEXT[e.outcome]}`, false,
+        { from: e.from, to: e.to, seat: e.seat });
       if (e.type === 'flagRevealed') { addLog(`${nameOf(e.seat)} 司令陣亡，軍旗顯露`, true); SFX.alarm(); }
       if (e.type === 'eliminated') { addLog(`${nameOf(e.seat)} 被扛旗，全軍覆沒`, true); SFX.flag(); }
       if (e.type === 'end') addLog(e.team != null ? `隊${e.team === 0 ? 'A' : 'B'} 獲勝` : '和局', true);
@@ -324,6 +325,8 @@ async function syncOnline() {
   if (info.status === 'setup') startTicker();
 }
 
+// 戰報上被點開的那一則（在棋盤上亮出起點與終點）。再點一次就取消。
+let pinnedLog = null;
 let lobbyOpen = false;
 // 大廳裡被伺服器拒絕的訊息要顯示在大廳上。原本只寫進戰報，而戰報被大廳視窗蓋住，
 // 玩家按了沒反應又看不到理由（Lynch：「我怎麼好像不能選位置」）。
@@ -340,21 +343,32 @@ function renderLobby(info) {
   // Lynch：「我希望網址精簡一點，譬如不要有 ?room 這樣太難打字。」
   const link = `${location.origin}${location.pathname}#${info.code}`;
 
-  wrap.append(textBlock('把下面這個連結傳給朋友，他點開就會進到這一間。'));
+  wrap.append(textBlock('把連結或房號給朋友，他就能進到這一間。'));
+
+  // 連結＋一顆明確的「複製」。原本只有一個看起來像文字的框（點了其實會複製），
+  // 但沒人看得出來可以按（GPT 實測回饋）。
+  const linkRow = document.createElement('div');
+  linkRow.className = 'lobby-link';
   const box = document.createElement('div');
-  box.className = 'report-code';
+  box.className = 'report-code lobby-link-box';
   box.textContent = link;
-  box.title = '點一下複製';
-  box.addEventListener('click', () => {
+  const copy = document.createElement('button');
+  copy.className = 'btn';
+  copy.textContent = '複製連結';
+  const doCopy = () => {
     navigator.clipboard?.writeText(link);
-    box.textContent = '已複製　' + link;
-  });
-  wrap.append(box);
+    copy.textContent = '已複製 ✓';
+    setTimeout(() => { copy.textContent = '複製連結'; }, 1600);
+  };
+  box.addEventListener('click', doCopy);
+  copy.addEventListener('click', doCopy);
+  linkRow.append(box, copy);
+  wrap.append(linkRow);
 
   const me = document.createElement('div');
   me.className = 'lobby-me';
   const meName = document.createElement('span');
-  meName.innerHTML = `你的代稱：<b>${playerName() || '（還沒取名）'}</b>`;
+  meName.innerHTML = `你的代稱：<b>${playerName() || '（還沒取名）'}</b>　房號 <b>${info.code}</b>`;
   const meBtn = document.createElement('button');
   meBtn.className = 'btn';
   meBtn.textContent = '改代稱';
@@ -362,58 +376,65 @@ function renderLobby(info) {
   me.append(meName, meBtn);
   wrap.append(me);
 
-  const table = document.createElement('div');
-  table.className = 'lobby-seats';
+  // 座位排成十字，跟棋盤上的相對位置一致（GPT 建議，比「1、3 同隊」那段文字直覺）。
+  // 已經入座的人：自己一定在下方，其餘照行棋順序逆時針擺（右、對面、左）——
+  // 那正是開局後畫面會呈現的樣子。還沒入座的人：以 1 號位為基準。
   const mine = info.you?.seats ?? [];
-  for (const seat of SEATS) {
-    const row = document.createElement('div');
-    row.className = 'lobby-row';
+  const base = mine[0] ?? 0;
+  const at = (offset) => (base + offset) % 4;
+  const cross = document.createElement('div');
+  cross.className = 'lobby-cross';
+  const cell = (seat, pos) => {
+    const c = document.createElement('div');
+    c.className = `lobby-cell lobby-cell--${pos} ind-seat${seat}`;
     const who = info.seats?.[seat];
-    // 隊別要寫出來：對家才是隊友，而「兩個位置必須同一隊」這條規則
-    // 不寫清楚的話，玩家只會看到一句被拒絕的錯誤（Lynch：「我怎麼好像不能選位置」）。
-    const team = document.createElement('span');
-    team.className = `lobby-team lobby-team--${TEAM_OF(seat)}`;
-    team.textContent = TEAM_OF(seat) === 0 ? '隊A' : '隊B';
-    const label = document.createElement('span');
-    label.className = `lobby-seat ind-seat${seat}`;
-    // ⚠ 不要用「下家／上家」這種方位命名。
-    //    開局之後畫面會轉到「自己那一家在最下面」（每個人都是），
-    //    所以坐 3 號位的人在自己畫面上看到的也是下方——方位名稱一定會對不上。
-    //    Lynch 2026-09-06：「我希望每個人都是下家…選的時候可以選，
-    //    但實際玩的時候視角要是下家。」（視角本來就是這樣，是這裡的名字在誤導。）
-    label.textContent = ['1 號位', '2 號位', '3 號位', '4 號位'][seat];
-    const name = document.createElement('span');
-    name.className = 'lobby-name';
-    name.textContent = who
-      ? (who.ai ? `${who.nickname}（電腦）` : who.nickname + (mine.includes(seat) ? '（你）' : ''))
+    const isMine = mine.includes(seat);
+    if (isMine) c.classList.add('is-me');
+    const tag = document.createElement('span');
+    tag.className = 'lobby-cell-tag';
+    // 隊別用「你這隊／敵隊」講，比「隊A／隊B」直覺——但沒入座時還沒有「你」，
+    // 那就照實寫成 A／B 兩隊。
+    tag.textContent = mine.length
+      ? (TEAM_OF(seat) === TEAM_OF(base) ? (isMine ? '你' : '隊友') : '敵方')
+      : (TEAM_OF(seat) === 0 ? 'A 隊' : 'B 隊');
+    const nm = document.createElement('span');
+    nm.className = 'lobby-cell-name';
+    nm.textContent = who
+      ? (who.ai ? '電腦' : who.nickname + (isMine ? '（你）' : ''))
       : '（空位）';
-    if (mine.includes(seat)) row.classList.add('is-me');
-    row.append(team, label, name);
-    if (!who) {
+    const num = document.createElement('span');
+    num.className = 'lobby-cell-num';
+    num.textContent = `${seat + 1} 號位`;
+    c.append(tag, nm, num);
+    if (!who && !mine.length) {
       const b = document.createElement('button');
-      b.className = 'btn';
-      // 已經有位子的人再按，是「一人控兩家」而不是換位子——按鈕上要講明白。
-      // Lynch 三台電腦連進同一間房時就踩到：有人不小心坐了兩個位置，
-      // 四個位置看起來全滿，而舊的大廳畫面看不出哪個是自己的。
+      b.className = 'btn btn--tiny';
       b.textContent = '坐這裡';
       b.addEventListener('click', () => { lobbyError = ''; session.send({ type: 'seat', seat }); });
-      // 一個人只能坐一個位置（Lynch 2026-09-06）。已經有位子就不給第二顆按鈕——
-      // 人不夠時空位會在開局時自動由同隊的人接手，不需要自己去點。
-      if (!mine.length) row.append(b);
-    } else if (mine.includes(seat)) {
-      // 坐錯了要換得回來——原本一坐下就沒有退路
+      c.append(b);
+    } else if (isMine) {
       const b = document.createElement('button');
-      b.className = 'btn';
+      b.className = 'btn btn--tiny';
       b.textContent = '離座';
       b.addEventListener('click', () => { lobbyError = ''; session.send({ type: 'unseat', seat }); });
-      row.append(b);
+      c.append(b);
     }
-    table.append(row);
-  }
-  wrap.append(table);
+    return c;
+  };
+  cross.append(cell(at(2), 'top'), cell(at(3), 'left'), cell(at(1), 'right'), cell(at(0), 'bottom'));
+  wrap.append(cross);
+
+  // 現在幾個人、空位怎麼辦——比讓玩家回想上一頁的說明直覺（GPT 建議）
+  const humans = SEATS.filter(x => info.seats?.[x] && !info.seats[x].ai).length;
+  const count = document.createElement('div');
+  count.className = 'modal-note';
+  count.textContent = `目前 ${humans}/4 人。`
+    + (humans < 4 ? '人不滿也可以開始，開局時空位由電腦補上。' : '四家都到齊了。');
+  wrap.append(count);
+
   const tip = document.createElement('div');
   tip.className = 'modal-note';
-  tip.textContent = '1、3 號位一隊，2、4 號位一隊——同隊的兩家坐在對面。'
+  tip.textContent = '坐在對面的是隊友，左右兩家是敵人。'
     + '不論你坐哪一位，開局後你的棋子都會在畫面最下方。';
   wrap.append(tip);
   if (lobbyError) {
@@ -467,8 +488,10 @@ const viewSeat = () => {
   return mySetupSeats()[0] ?? t ?? 0;
 };
 
-function addLog(text, big = false) {
-  logLines.unshift({ text, big });
+// move：這一則對應的走子（{ from, to, seat }）。有帶的話，戰報那一行點下去
+// 會在棋盤上把起點與終點亮出來——位置本來就是公開資訊，不會洩漏任何身分。
+function addLog(text, big = false, move = null) {
+  logLines.unshift({ text, big, move });
   logLines = logLines.slice(0, 60);
 }
 function hint(text, isError = false) {
@@ -611,7 +634,8 @@ async function doMove(seat, from, to) {
     }));
   } catch { /* 存不下不影響遊戲 */ }
   for (const e of events) {
-    if (e.type === 'move') addLog(`${nameOf(e.seat)}：${OUTCOME_TEXT[e.outcome]}`);
+    if (e.type === 'move') addLog(`${nameOf(e.seat)}：${OUTCOME_TEXT[e.outcome]}`, false,
+      { from: e.from, to: e.to, seat: e.seat });
     if (e.type === 'flagRevealed') { addLog(`${nameOf(e.seat)} 司令陣亡，軍旗顯露`, true); SFX.alarm(); }
     if (e.type === 'eliminated') { addLog(`${nameOf(e.seat)} 被扛旗，全軍覆沒`, true); SFX.flag(); }
     if (e.type === 'end') addLog(e.team != null ? `隊${e.team === 0 ? 'A' : 'B'} 獲勝` : '和局', true);
@@ -785,11 +809,13 @@ function refresh() {
                : ownerOfSeat(S.turn) === activeHuman));
 
   const board = S.displayBoard;
+  // 戰報上點開的那一手優先顯示（點第二次取消）——它就是拿來回看「剛剛那步走去哪」的。
+  const pinned = pinnedLog != null ? logLines[pinnedLog]?.move : null;
   view.render({
     board, mySeats: inSetup ? [setupSeat] : [seat],
     selected, moves, revealedFlags: board?.revealedFlags ?? [],
-    lastMove: inSetup ? null : lastMove,
-    recentMoves: inSetup ? [] : recentMoves, viewerSeat: seat,
+    lastMove: inSetup ? null : (pinned ?? lastMove),
+    recentMoves: inSetup ? [] : (pinned ? [] : recentMoves), viewerSeat: seat,
   });
   view.setCamera(BIG_MODE ? ZOOMS[zoomLevel][1] : 'full');
 
@@ -833,10 +859,18 @@ function refresh() {
     return li;
   }));
 
-  els.log.replaceChildren(...logLines.map(l => {
+  els.log.replaceChildren(...logLines.map((l, i) => {
     const li = document.createElement('li');
     li.textContent = l.text;
-    if (l.big) li.className = 'is-big';
+    li.className = [l.big ? 'is-big' : '', l.move ? 'is-clickable' : '',
+      pinnedLog === i ? 'is-pinned' : ''].filter(Boolean).join(' ');
+    if (l.move) {
+      li.title = '點一下看這步走到哪';
+      li.addEventListener('click', () => {
+        pinnedLog = pinnedLog === i ? null : i;
+        refresh();
+      });
+    }
     return li;
   }));
 
@@ -1341,10 +1375,38 @@ function openOnlineMenu() {
   const jb = document.createElement('button');
   jb.className = 'btn btn--primary';
   jb.textContent = '加入';
+  // 錯誤要分類，而且不能把玩家丟到空棋盤上（GPT 實測：打 123 進去變成空盤，
+  // 最後只說「連不上伺服器」，關掉之後也回不到輸入框）。
+  // 三種情況分開講，而且輸入框留著、內容留著。
+  const jerr = document.createElement('div');
+  jerr.className = 'join-error';
+  jerr.hidden = true;
+  join.append(jerr);
+  const fail = (msg) => {
+    jerr.textContent = msg; jerr.hidden = false;
+    jb.disabled = false; jb.textContent = '加入';
+    jin.focus(); jin.select();
+  };
   const doJoin = async () => {
     const code = jin.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase();
     if (!code) { jin.focus(); return; }
-    jb.disabled = true; jb.textContent = '連線中…';
+    if (!/^[0-9]{6}$/.test(code) && !/^[A-Z0-9]{6}$/.test(code))
+      return fail('房號是六位數字，再確認一下。');
+    jerr.hidden = true;
+    jb.disabled = true; jb.textContent = '確認中…';
+    // 先問這間房在不在，才分得出「打錯號碼」與「連不上」
+    try {
+      const res = await fetch(`${GAME_ENDPOINT}/room/${encodeURIComponent(code)}`);
+      const data = await res.json().catch(() => ({}));
+      // ⚠ 舊版伺服器沒有這個端點，它對任何未知路徑都回 404 {error:'not found'}。
+      //    只有明確說「房間不存在」才算真的找不到，否則就照舊直接連連看——
+      //    否則伺服器還沒更新的期間，所有人都會被擋在門外。
+      if (res.status === 404 && data.error === '房間不存在')
+        return fail('找不到這間房。號碼再確認一下，或請對方重開一間。');
+    } catch {
+      return fail('連不上伺服器，檢查一下網路再試一次。');
+    }
+    jb.textContent = '連線中…';
     closeModal();
     await startOnline(code);            // 連不上時 startOnline 會自己跳「連不上房間」
   };

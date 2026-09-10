@@ -8,12 +8,12 @@
 //   remoteSession：伺服器說了算，這裡只是把動作送出去、把推回來的狀態存起來。
 // 所以這裡不做任何「先假裝走了」的樂觀更新——暗棋一旦前後端狀態不一致，
 // 玩家會看到自己的棋子跳回去，比慢半秒難受得多。
-import { SEATS } from '../engine/src/board.mjs?v=210';
-import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=210';
-import { GAME_WS } from './config.js?v=210';
-import { ensureAccount } from './account.js?v=210';
-import { gameStats } from '../engine/src/game-stats.mjs?v=210';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=210';
+import { SEATS } from '../engine/src/board.mjs?v=214';
+import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=214';
+import { GAME_WS } from './config.js?v=214';
+import { ensureAccount } from './account.js?v=214';
+import { gameStats } from '../engine/src/game-stats.mjs?v=214';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=214';
 
 // 伺服器沒告訴我這一手的結果時，從前後盤面推回來：
 // 終點現在是我的棋＝走過去了（原本有敵人就是吃掉了）、空的＝同歸於盡、還是敵人＝我死了。
@@ -87,16 +87,22 @@ export async function remoteSession({ code, nickname, onState, onError } = {}) {
     seatsOwnedBy: () => mySeats(),
     get controllers() { return SEATS.map(s => (mySeats().includes(s) ? 'me' : 'other')); },
 
-    // 座位上顯示的名字：連線版要顯示真人的暱稱，而不是「你／對家」這種固定字串
-    seatNames: () => SEATS.map(s => {
-      const info = state?.seats?.[s];
-      if (!info) return `P${s}`;
-      const mine = mySeats().includes(s);
-      // 電腦那家的暱稱本來就是「電腦」，不要再加一次括號變成「電腦（電腦）」
-      return info.ai ? info.nickname
-        : mine ? `${info.nickname}（你）`
-        : info.connected ? info.nickname : `${info.nickname}（離線）`;
-    }),
+    // 座位上顯示的名字：連線版要顯示真人的暱稱，而不是「你／對家」這種固定字串。
+    // ⚠ 還要標出「相對於我」的方位：三家電腦全叫「電腦」的話，戰報上三行
+    //    「電腦：移動」根本分不出是誰（GPT 實測回饋，Lynch 同意要修）。
+    //    方位是相對的——行棋順序逆時針，我的下一家是右家、對面是對家（隊友）、再來是左家。
+    seatNames: () => {
+      const me = mySeats()[0] ?? 0;
+      const where = (s) => ['', '右家', '對家・隊友', '左家'][(s - me + 4) % 4];
+      return SEATS.map(s => {
+        const info = state?.seats?.[s];
+        if (!info) return `P${s}`;
+        if (mySeats().includes(s)) return `${info.nickname}（你）`;
+        const tag = where(s);
+        const off = !info.ai && !info.connected ? '・離線' : '';
+        return `${info.nickname}（${tag}${off}）`;
+      });
+    },
 
     // 房間資訊（大廳畫面要用）
     roomInfo: () => (state ? {

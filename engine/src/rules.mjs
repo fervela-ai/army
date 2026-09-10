@@ -19,6 +19,10 @@ export const PIECES = {
 export const TOTAL_PIECES = Object.values(PIECES).reduce((n, p) => n + p.count, 0);   // 25
 
 // ---- §2 佈局驗證 ----
+// 錯誤訊息要講人話：玩家看到的是棋盤，不是 `P0-r1c1`（GPT 實測回饋，Lynch 同意）。
+// 第 1 排是最前線、第 6 排是大本營那一排，跟畫面上從上往下數的順序一致。
+const where = (n) => (n?.row ? `第 ${n.row} 排第 ${n.col} 格` : '這一格');
+
 export function validateSetup(seat, layout) {                 // layout: Map/物件 nodeId → 棋子名
   const errors = [];
   const entries = Object.entries(layout);
@@ -30,14 +34,14 @@ export function validateSetup(seat, layout) {                 // layout: Map/物
     if (n.seat !== seat) { errors.push(`${id} 不屬於 P${seat} 的陣地`); continue; }
     if (!PIECES[piece]) { errors.push(`未知棋子 ${piece}`); continue; }
     seen[piece]++;
-    if (n.kind === 'camp') errors.push(`行營內不可放子：${id}`);
-    if (piece === '軍旗' && n.kind !== 'hq') errors.push(`軍旗只能放在大本營：${id}`);
-    if (piece === '地雷' && n.row < 5) errors.push(`地雷只能放在後兩排：${id}`);
-    if (piece === '炸彈' && n.row === 1) errors.push(`炸彈不可放在第一排：${id}`);
+    if (n.kind === 'camp') errors.push(`行營裡不能放棋子（${where(n)}）`);
+    if (piece === '軍旗' && n.kind !== 'hq') errors.push(`軍旗只能放在大本營（${where(n)}不是大本營）`);
+    if (piece === '地雷' && n.row < 5) errors.push(`地雷只能放在最後兩排（${where(n)}太前面）`);
+    if (piece === '炸彈' && n.row === 1) errors.push(`炸彈不能放在第一排（${where(n)}）`);
   }
-  if (entries.length !== TOTAL_PIECES) errors.push(`必須放滿 ${TOTAL_PIECES} 子，目前 ${entries.length}`);
+  if (entries.length !== TOTAL_PIECES) errors.push(`要放滿 ${TOTAL_PIECES} 顆，現在只有 ${entries.length} 顆`);
   for (const [name, def] of Object.entries(PIECES))
-    if (seen[name] !== def.count) errors.push(`${name} 應為 ${def.count} 枚，實際 ${seen[name]}`);
+    if (seen[name] !== def.count) errors.push(`${name}要 ${def.count} 顆，現在是 ${seen[name]} 顆`);
 
   return { ok: errors.length === 0, errors };
 }

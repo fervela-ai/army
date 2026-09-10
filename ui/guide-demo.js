@@ -11,10 +11,10 @@
 //
 // 順序也是 Lynch 定的：先棋盤 → 大本營 → 後兩排 → 邊佈陣邊講棋子 → 走子 → 怎麼贏。
 // 理由是新手第一屏就看到扛旗動畫，根本還不知道棋盤長什麼樣。
-import { createBoardView } from './board.js?v=210';
-import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=210';
-import { legalMoves, movePath } from '../engine/src/rules.mjs?v=210';
-import { BOARD } from '../engine/src/board.mjs?v=210';
+import { createBoardView } from './board.js?v=214';
+import { referenceLayout } from '../engine/ai/reference-layout.mjs?v=214';
+import { legalMoves, movePath } from '../engine/src/rules.mjs?v=214';
+import { BOARD } from '../engine/src/board.mjs?v=214';
 
 const NS = 'http://www.w3.org/2000/svg';
 const L0 = referenceLayout(0);
@@ -273,7 +273,8 @@ export function buildBasicsTour() {
   const next = document.createElement('button');
   const play = document.createElement('button');
   const dots = document.createElement('span');
-  prev.className = next.className = 'btn demo-btn';
+  prev.className = 'btn demo-btn demo-prev';
+  next.className = 'btn demo-btn demo-next';
   play.className = 'btn demo-btn demo-play';
   prev.textContent = '上一步';
   play.textContent = '▶ 自動播放';

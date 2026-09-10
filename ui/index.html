@@ -14,7 +14,7 @@
 <meta property="og:description" content="四個人，兩兩一隊。對家是你的隊友，但你看不到他的棋子。打開就能玩，不用下載、不用註冊。">
 <meta property="og:image" content="https://army.fervela.ai/share.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="theme.css?v=214">
+<link rel="stylesheet" href="theme.css?v=218">
 </head>
 <body>
 <!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
@@ -78,7 +78,7 @@
   <div class="landing-inner">
     <span class="landing-chip">四人暗棋 · 線上對戰</span>
     <h1 class="landing-title">四國軍棋</h1>
-    <p class="landing-sub">你和對家一隊，拿下敵方兩面軍旗就贏。<br>和三家電腦對弈，或把連結丟給朋友。</p>
+    <p class="landing-sub">你和對家一隊，拿下敵方兩面軍旗就贏。<br>和電腦隊友一隊對抗兩家電腦，或把連結丟給朋友。</p>
     <div class="landing-cards">
       <button class="landing-card" id="ldSolo">
         <span class="landing-card-icon">♟</span>
@@ -119,16 +119,22 @@
           <option value="duelTeam">雙人敵對（各控一整隊）</option>
         </select>
       </label>
-      <label class="toggle"><input type="checkbox" id="soundOn" checked> 音效</label>
+      <!-- 手機上這一排會擠成兩列，把棋盤往下推。低頻的功能（音效、棋盤大小、
+           重新開局）收進「⋯」，常用的（規則說明、認輸離開）留在外面。
+           桌機不受影響：.controls-more 在寬螢幕是 display:contents，照常排成一列。 -->
       <span class="debug-tools" id="debugTools" hidden>
         <label class="toggle"><input type="checkbox" id="useSearch"> 電腦用搜尋（實驗中，目前較弱）</label>
         <label class="toggle"><input type="checkbox" id="revealAll"> 顯示全部（除錯用）</label>
       </span>
-      <button class="btn btn--primary" id="online">多人連線</button>
+      <button class="btn" id="online">多人連線</button>
       <button class="btn" id="guide">規則說明</button>
       <button class="btn debug-tools" id="sfx" hidden>音效</button>
       <button class="btn" id="resign">認輸離開</button>
-      <button class="btn" id="restart">重新開局</button>
+      <button class="btn controls-toggle" id="moreBtn" aria-label="更多設定">⋯</button>
+      <div class="controls-more" id="moreBox">
+        <label class="toggle"><input type="checkbox" id="soundOn" checked> 音效</label>
+        <button class="btn" id="restart">重新開局</button>
+      </div>
     </div>
   </header>
 
@@ -184,6 +190,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=214"></script>
+<script type="module" src="app.js?v=218"></script>
 </body>
 </html>

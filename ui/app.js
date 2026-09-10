@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=214';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=214';
-import { localSession } from './session.js?v=214';
-import { remoteSession } from './remote-session.js?v=214';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=214';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=214';
-import { buildGuide } from './guide.js?v=214';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=214';
-import { createBoardView } from './board.js?v=214';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=214';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=218';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=218';
+import { localSession } from './session.js?v=218';
+import { remoteSession } from './remote-session.js?v=218';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=218';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=218';
+import { buildGuide } from './guide.js?v=218';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=218';
+import { createBoardView } from './board.js?v=218';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=218';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,11 +24,11 @@ const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中�
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn', 'home',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnName', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
   'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayCode', 'overlayAgain',
-  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'turnBanner', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
+  'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'turnBanner', 'moreBtn', 'moreBox', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=214），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=218），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -57,15 +57,22 @@ checkForUpdate();
 // 開過一次就記住：更新按鈕會把網址改寫成 ?v=NNN，會把 big=1 洗掉，
 // 每次都要重打一次網址很煩（Lynch 實際踩到）。?big=0 可以關掉。
 const bigParam = new URLSearchParams(location.search).get('big');
-if (bigParam === '1') { try { localStorage.setItem('army-online:big', '1'); } catch {} }
-if (bigParam === '0') { try { localStorage.removeItem('army-online:big'); } catch {} }
-let BIG_MODE = false;
-try { BIG_MODE = localStorage.getItem('army-online:big') === '1'; } catch {}
+if (bigParam === '1') { try { localStorage.removeItem('army-online:big'); } catch {} }
+if (bigParam === '0') { try { localStorage.setItem('army-online:big', '0'); } catch {} }
+// 棋盤大小的三段式**預設打開**（原本要 ?big=1 才有）。
+// GPT 實測手機上棋子只有約 21×20px，而縮放本來就是解法——只是新玩家看不到那組按鈕。
+let BIG_MODE = true;
+try { if (localStorage.getItem('army-online:big') === '0') BIG_MODE = false; } catch {}
 // 三段大小，每一段都能拖曳平移（Lynch 指定）。記在本機，下一局還是同一個習慣。
 const ZOOMS = [['小', 'full'], ['中', 'mid'], ['大', 'big']];
-let zoomLevel = 2;
-try { zoomLevel = Number(localStorage.getItem('army-online:zoom') ?? 2); } catch {}
-if (!Number.isInteger(zoomLevel) || zoomLevel < 0 || zoomLevel > 2) zoomLevel = 2;
+// 第一次來的人：手機給「中」（整盤看得到、棋子也看得清），桌機給「小」（整盤剛好放得下）。
+const NARROW = globalThis.matchMedia?.('(max-width: 620px)')?.matches ?? false;
+let zoomLevel = NARROW ? 1 : 0;
+try {
+  const saved = localStorage.getItem('army-online:zoom');
+  if (saved != null) zoomLevel = Number(saved);
+} catch {}
+if (!Number.isInteger(zoomLevel) || zoomLevel < 0 || zoomLevel > 2) zoomLevel = NARROW ? 1 : 0;
 if (BIG_MODE) {
   const box = document.createElement('span');
   box.className = 'zoombox';
@@ -86,7 +93,9 @@ if (BIG_MODE) {
   const sync = () => btns.forEach((b, i) => b.classList.toggle('is-on', i === zoomLevel));
   sync();
   box.append(...btns);
-  els.guide.before(box);
+  // 棋盤大小屬於低頻設定，收進「⋯」那一組（手機）；桌機上那組是 display:contents，
+  // 所以它照樣排在工具列上。
+  if (els.moreBox) els.moreBox.prepend(box); else els.guide.before(box);
 }
 
 // session = 這場對局的連線層（見 session.js）。畫面只跟它要「我看得到的東西」，
@@ -240,6 +249,18 @@ async function startOnline(code) {
       code,
       nickname: playerName(),
       onState: (u) => { queueRemote(u); },
+      // 重連時把戰報接回來（Lynch 實測：重新整理之後，先前的紀錄整個消失）。
+      // 只用公開資訊重建：誰、從哪走到哪、結果——沒有任何棋子身分。
+      onHistory: (history) => {
+        if (!history?.length || logLines.some(l => l.move)) return;
+        for (const m of history) {
+          if (!OUTCOME_TEXT[m.outcome]) continue;
+          logLines.unshift({ text: `${nameOf(m.seat)}：${OUTCOME_TEXT[m.outcome]}`, big: false,
+            move: { from: m.from, to: m.to, seat: m.seat } });
+        }
+        logLines = logLines.slice(0, 60);
+        addLog(`接回這一局先前的 ${history.length} 步紀錄`, true);
+      },
       onError: (msg) => {
         if (msg === ignoreLobbyError) { ignoreLobbyError = ''; return; }
         addLog(msg, true);
@@ -1297,6 +1318,16 @@ function openGuide() {
   place(bar);            // showModal 會重建動作列，所以要再放一次
 }
 els.guide.addEventListener('click', openGuide);
+// 「⋯」：只有手機看得到（CSS 控制）。用絕對定位浮出來，不佔版面、不會推動棋盤。
+els.moreBtn?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  els.moreBox.classList.toggle('is-open');
+});
+document.addEventListener('click', (e) => {
+  if (!els.moreBox?.classList.contains('is-open')) return;
+  if (els.moreBox.contains(e.target) || e.target === els.moreBtn) return;
+  els.moreBox.classList.remove('is-open');
+});
 
 // 回報問題的入口。畫面上叫人「回報時附上代號」，卻沒有地方可以回報（外部回饋指出）。
 // 不做表單也不收信箱：把該附的東西湊好、一鍵複製，傳給邀請他來玩的人就行。

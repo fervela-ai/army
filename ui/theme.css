@@ -419,11 +419,30 @@ body {
 .debug-tools { display: contents; }
 .debug-tools[hidden] { display: none !important; }
 
-/* 規則說明要比「認輸」「重新開局」顯眼——它是新手唯一的入口 */
+/* 規則說明是新手唯一的入口，要顯眼，但**不要用主色**——
+   一個畫面上同時好幾顆亮藍，反而看不出哪個才是現在該按的（GPT 回饋）。
+   用外框強調就夠：主色留給當下真正的主要操作（確定佈陣、換你囉）。 */
 #guide {
-  background: var(--seat-0); color: #fff; border-color: var(--seat-0); font-weight: 700;
+  color: var(--seat-0); border-color: var(--seat-0); font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--seat-0);
 }
-#guide:hover { filter: brightness(1.08); }
+#guide:hover { background: color-mix(in srgb, var(--seat-0) 8%, #fff); }
+
+/* 「⋯」與它收起來的那一組。桌機：完全不出現，內容照常排在工具列上。 */
+.controls-toggle { display: none; }
+.controls-more { display: contents; }
+@media (max-width: 620px) {
+  .controls-toggle { display: inline-flex; align-items: center; }
+  .controls { position: relative; }
+  .controls-more {
+    display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 25;
+    background: var(--panel-bg); border: 1px solid var(--panel-line); border-radius: 12px;
+    padding: 10px 12px; box-shadow: 0 12px 30px rgba(70,48,22,.22);
+    flex-direction: column; align-items: stretch; gap: 10px; min-width: 168px;
+  }
+  .controls-more.is-open { display: flex; }
+  .controls-more .btn { width: 100%; }
+}
 .g-svg { display: block; margin: 10px auto 6px; width: 100%; max-width: 420px; height: auto; }
 .g-t { font-size: 11px; fill: var(--ink); }
 .g-t--seat { font-size: 13px; font-weight: 700; fill: #fff; }
@@ -746,7 +765,11 @@ body {
 /* 手機：文字在上、棋盤退成很淡的背景，版面不推擠 */
 @media (max-width: 720px) {
   .landing { align-items: end; }
-  .landing-inner { padding-bottom: 34px; }
+  /* 內容整塊往上提：原本標題大約落在畫面 41% 的位置，兩個入口卡雖然沒被切掉，
+     但小螢幕要往下看才看得到（GPT 回饋）。往上提之後背景那盤棋一樣留得住。 */
+  .landing-inner { padding-bottom: clamp(48px, 14vh, 130px); }
+  .landing-title { margin-top: 12px; }
+  .landing-sub { margin-bottom: 22px; }
   .landing-art { justify-items: center; align-items: start; }
   .landing-art svg { width: 150vw; opacity: .26; transform: translate(6%, -8%) perspective(1200px) rotateX(58deg) rotateZ(-32deg); }
   .landing-card { padding: 14px 15px; }

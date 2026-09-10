@@ -8,12 +8,12 @@
 //   remoteSession：伺服器說了算，這裡只是把動作送出去、把推回來的狀態存起來。
 // 所以這裡不做任何「先假裝走了」的樂觀更新——暗棋一旦前後端狀態不一致，
 // 玩家會看到自己的棋子跳回去，比慢半秒難受得多。
-import { SEATS } from '../engine/src/board.mjs?v=214';
-import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=214';
-import { GAME_WS } from './config.js?v=214';
-import { ensureAccount } from './account.js?v=214';
-import { gameStats } from '../engine/src/game-stats.mjs?v=214';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=214';
+import { SEATS } from '../engine/src/board.mjs?v=218';
+import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=218';
+import { GAME_WS } from './config.js?v=218';
+import { ensureAccount } from './account.js?v=218';
+import { gameStats } from '../engine/src/game-stats.mjs?v=218';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=218';
 
 // 伺服器沒告訴我這一手的結果時，從前後盤面推回來：
 // 終點現在是我的棋＝走過去了（原本有敵人就是吃掉了）、空的＝同歸於盡、還是敵人＝我死了。
@@ -49,6 +49,9 @@ export async function remoteSession({ code, nickname, onState, onError } = {}) {
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === 'error') { onError?.(msg.message); return; }
     if (msg.type !== 'state') return;
+    // 剛連上時伺服器會多送一份公開版棋譜（只有座位、起訖、結果，沒有身分），
+    // 讓斷線重連的人把戰報接回來。
+    if (msg.history) onHistory?.(msg.history);
     prev = state;
     state = msg.state;
     events = msg.events ?? [];

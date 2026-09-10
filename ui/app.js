@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=218';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=218';
-import { localSession } from './session.js?v=218';
-import { remoteSession } from './remote-session.js?v=218';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=218';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=218';
-import { buildGuide } from './guide.js?v=218';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=218';
-import { createBoardView } from './board.js?v=218';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=218';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=219';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=219';
+import { localSession } from './session.js?v=219';
+import { remoteSession } from './remote-session.js?v=219';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=219';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=219';
+import { buildGuide } from './guide.js?v=219';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=219';
+import { createBoardView } from './board.js?v=219';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=219';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=218），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=219），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -270,8 +270,17 @@ async function startOnline(code) {
     });
   } catch (e) {
     online = null;
-    showModal({ title: '連不上房間', body: textBlock(e.message ?? '請確認邀請連結是否正確'),
-      actions: [{ label: '好', primary: true, onClick: closeModal }] });
+    // 連不上要有路可以回去——原本按「好」之後就停在一個空棋盤上，
+    // 想再打一次房號還得自己找路（GPT 實測回饋）。
+    showModal({
+      title: '連不上這間房',
+      body: textBlock((e.message ?? '請確認邀請連結是否正確')
+        + '　房號可能打錯了，或這間房已經結束。'),
+      actions: [
+        { label: '重新輸入房號', primary: true, onClick: () => { closeModal(); openOnlineMenu(code); } },
+        { label: '回首頁', onClick: () => { closeModal(); if (landing) landing.hidden = false; } },
+      ],
+    });
     return;
   }
   activeHuman = 'me';
@@ -1366,7 +1375,7 @@ const ONLINE_MODES = [
     desc: '你和朋友各自操控一整隊兩家' },
 ];
 
-function openOnlineMenu() {
+function openOnlineMenu(prefill = '') {
   const wrap = document.createElement('div');
   wrap.append(textBlock('開一間房，把連結傳給朋友就能一起玩。'));
   for (const m of ONLINE_MODES) {
@@ -1400,6 +1409,7 @@ function openOnlineMenu() {
   const jin = document.createElement('input');
   jin.className = 'modal-input join-input';
   jin.placeholder = '例如 483102';
+  jin.value = prefill;                 // 連不上之後回來，號碼還在，直接改就好
   jin.inputMode = 'numeric';            // 手機直接跳數字鍵盤
   jin.autocomplete = 'off';
   jin.maxLength = 8;

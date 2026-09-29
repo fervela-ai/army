@@ -841,3 +841,37 @@ body {
 .lobby-cell-name { font-size: 14px; font-weight: 600; color: var(--ink);
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lobby-cell-num { font-size: 11px; color: var(--ink-soft); }
+
+/* ── 配對大廳：每一桌是一個小十字，四個座位圍著桌號 ── */
+.online-choice--lobby { border-color: var(--seat-0); }
+.match-grid {
+  display: grid; gap: 10px; margin: 12px 0 6px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+.match-table {
+  display: grid; gap: 4px; padding: 8px; border: 1px solid var(--panel-line); border-radius: 12px;
+  background: #fff;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, 40px);          /* 固定高度：刷新時不會撐開或縮起來 */
+  grid-template-areas: '. top .' 'left mid right' '. bottom .';
+}
+.match-table.is-playing { opacity: .55; }
+.match-mid { grid-area: mid; display: grid; place-items: center; font-size: 12px; color: var(--ink-soft); font-weight: 700; }
+.match-seat {
+  min-width: 0; min-height: 40px; padding: 0 4px; border-radius: 8px; font-size: 13px;
+  display: grid; place-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 1px dashed var(--panel-line); border-top: 3px solid var(--indicator, var(--panel-line));
+  background: transparent; color: var(--ink-soft); font: inherit; font-size: 13px;
+}
+.match-seat.is-taken { border-style: solid; background: #faf7ef; color: var(--ink); font-weight: 600; }
+button.match-seat { cursor: pointer; color: var(--seat-0); }
+button.match-seat:hover { background: rgba(47,95,208,.07); }
+.match-seat--top { grid-area: top; }
+.match-seat--left { grid-area: left; }
+.match-seat--right { grid-area: right; }
+.match-seat--bottom { grid-area: bottom; }
+.match-status { min-height: 1.4em; }
+.lobby-cell-ready { font-size: 11px; color: var(--ink-soft); }
+.lobby-cell-ready.is-ready { color: #2f8a4c; font-weight: 700; }
+/* 公開桌：最高的狀態是「名字＋座位號＋準備狀態＋請離座按鈕」，一開始就留好這個高度 */
+.lobby-cross.is-public .lobby-cell { min-height: 118px; align-content: start; }

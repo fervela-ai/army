@@ -14,7 +14,13 @@ export const RECORD_ENDPOINT = LOCAL
 // 跟棋譜那支是**兩個不同的 Worker**，不要混用。
 // 本機開發時也指向正式的那支——連線層沒有本機替身，而且它不會寫進棋譜庫，
 // 不像 RECORD_ENDPOINT 那樣會污染真實資料。
-export const GAME_ENDPOINT = 'https://army-game.fervela-ai.workers.dev';
+// 例外：本機加 ?game=8799 就改連本機的 `wrangler dev`——伺服器端的改動（例如配對大廳）
+// 還沒上線前要先在本機驗，不能拿正式伺服器做實驗。只在 localhost 生效。
+const LOCAL_GAME_PORT = LOCAL && /^\d{4,5}$/.test(new URLSearchParams(globalThis.location?.search).get('game') ?? '')
+  ? new URLSearchParams(globalThis.location.search).get('game') : null;
+export const GAME_ENDPOINT = LOCAL_GAME_PORT
+  ? `http://localhost:${LOCAL_GAME_PORT}`
+  : 'https://army-game.fervela-ai.workers.dev';
 
 // WebSocket 的位址由上面那個換算，不要另外寫死一份，免得改了一個忘了另一個。
 export const GAME_WS = GAME_ENDPOINT.replace(/^http/, 'ws');

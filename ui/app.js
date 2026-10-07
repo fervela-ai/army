@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=222';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=222';
-import { localSession } from './session.js?v=222';
-import { remoteSession } from './remote-session.js?v=222';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=222';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=222';
-import { buildGuide } from './guide.js?v=222';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=222';
-import { createBoardView } from './board.js?v=222';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=222';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=223';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=223';
+import { localSession } from './session.js?v=223';
+import { remoteSession } from './remote-session.js?v=223';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=223';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=223';
+import { buildGuide } from './guide.js?v=223';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=223';
+import { createBoardView } from './board.js?v=223';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=223';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=222），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=223），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -1483,10 +1483,12 @@ function openMatchLobby() {
       return card;
     }));
   };
+  let first = true;                     // 第一次輪詢帶 ?open=1，伺服器才數得出「打開大廳幾次」
   const poll = async () => {
     if (els.modal.hidden || !wrap.isConnected) return stop();
     try {
-      const res = await fetch(`${GAME_ENDPOINT}/lobby`);
+      const res = await fetch(`${GAME_ENDPOINT}/lobby${first ? '?open=1' : ''}`);
+      first = false;
       const data = await res.json();
       if (!res.ok || !Array.isArray(data.tables)) throw new Error();
       if (!wrap.isConnected) return;

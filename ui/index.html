@@ -14,7 +14,7 @@
 <meta property="og:description" content="四個人，兩兩一隊。對家是你的隊友，但你看不到他的棋子。打開就能玩，不用下載、不用註冊。">
 <meta property="og:image" content="https://army.fervela.ai/share.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="theme.css?v=224">
+<link rel="stylesheet" href="theme.css?v=227">
 </head>
 <body>
 <!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
@@ -96,7 +96,11 @@
     <p class="landing-foot">
       <button class="landing-name" id="ldRename" title="改代稱">你的代稱：<b id="ldName">—</b><span class="landing-name-edit">改</span></button>
     </p>
-    <p class="landing-foot">Fervela.ai　<span id="ldVer"></span></p>
+    <div class="rating-note" id="ldRating">
+      <img src="rating-general.png" width="48" height="48" alt="普遍級">
+      <span>普遍級，任何年齡皆可玩。請注意使用時間，避免沉迷。<br>本遊戲不得用於賭博或從事違法行為。</span>
+    </div>
+    <p class="landing-foot">營運：Fervela.ai　<a href="mailto:contact@fervela.ai">contact@fervela.ai</a>　<span id="ldVer"></span></p>
   </div>
 </div>
 <div class="app">
@@ -190,6 +194,6 @@
     </section>
   </aside>
 </div>
-<script type="module" src="app.js?v=224"></script>
+<script type="module" src="app.js?v=227"></script>
 </body>
 </html>

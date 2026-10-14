@@ -1,16 +1,16 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=224';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=224';
-import { localSession } from './session.js?v=224';
-import { remoteSession } from './remote-session.js?v=224';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=224';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=224';
-import { buildGuide } from './guide.js?v=224';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=224';
-import { createBoardView } from './board.js?v=224';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=224';
+import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=227';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=227';
+import { localSession } from './session.js?v=227';
+import { remoteSession } from './remote-session.js?v=227';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=227';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=227';
+import { buildGuide } from './guide.js?v=227';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=227';
+import { createBoardView } from './board.js?v=227';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=227';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +28,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=224），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=227），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -130,6 +130,15 @@ let gameCode = newGameCode();
 const playerName = () => localStorage.getItem(PLAYER_KEY) || '';
 
 // 進站先問一次代稱，之後每局自動帶入。問了才知道棋譜是誰下的。
+// 遊戲分級標示（遊戲軟體分級管理辦法第 11、13 條；法遵 10/14）：
+// 起始畫面要看得到普遍級標識（至少 45×45）和兩句警語。
+// 首頁寫在 index.html；從 #lobby 直接進來的人不會經過首頁，所以取代稱和大廳也各放一份。
+// 標識圖要用主管機關公告的原圖（rating-general.png），不要自己畫。
+function ratingNote() {
+  const src = document.getElementById('ldRating');
+  return src ? Object.assign(src.cloneNode(true), { id: '' }) : document.createElement('div');
+}
+
 function askNickname({ force = false, lead: leadText = null } = {}) {
   return new Promise((resolve) => {
     if (playerName() && !force) { resolve(); return; }
@@ -148,7 +157,7 @@ function askNickname({ force = false, lead: leadText = null } = {}) {
     note.className = 'modal-note';
     // 說清楚會留下什麼。朋友有權知道自己打的字會被存起來。
     note.textContent = '代稱會跟這局的棋譜一起存起來，只用來看棋局怎麼下的。請不要用真名。';
-    wrap.append(lead, input, note);
+    wrap.append(lead, input, note, ratingNote());
     showModal({
       title: '四國軍棋',
       body: wrap,
@@ -382,7 +391,12 @@ function renderLobby(info) {
   if (info.you?.kicked) {
     lobbyOpen = false;
     showModal({ title: `房間 ${info.code}`, body: textBlock('桌主請你離開這一桌了。回大廳換一桌吧。'),
-      actions: [{ label: '回大廳', primary: true, onClick: () => { session?.close?.(); online = null; openMatchLobby(); } }] });
+      actions: [{ label: '回大廳', primary: true, onClick: () => {
+        session?.close?.(); online = null;
+        // 網址還掛著這一桌的房號，一重整又會被帶回這張把他請走的桌子（10/13 本機實測）
+        try { history.replaceState(null, '', `${location.pathname}${location.search}#lobby`); } catch { /* 不影響 */ }
+        openMatchLobby();
+      } }] });
     return;
   }
   const wrap = document.createElement('div');
@@ -1450,7 +1464,7 @@ function openMatchLobby() {
   const status = document.createElement('div');
   status.className = 'modal-note match-status';
   status.textContent = '讀取桌子中…';
-  wrap.append(me, grid, status);
+  wrap.append(me, grid, status, ratingNote());
 
   let timer = null;
   const stop = () => { clearTimeout(timer); timer = null; };

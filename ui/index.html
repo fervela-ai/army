@@ -14,7 +14,7 @@
 <meta property="og:description" content="四個人，兩兩一隊。對家是你的隊友，但你看不到他的棋子。打開就能玩，不用下載、不用註冊。">
 <meta property="og:image" content="https://army.fervela.ai/share.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="theme.css?v=227">
+<link rel="stylesheet" href="theme.css?v=228">
 </head>
 <body>
 <!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
@@ -130,12 +130,13 @@
         <label class="toggle"><input type="checkbox" id="useSearch"> 電腦用搜尋（實驗中，目前較弱）</label>
         <label class="toggle"><input type="checkbox" id="revealAll"> 顯示全部（除錯用）</label>
       </span>
-      <button class="btn" id="online">多人連線</button>
-      <button class="btn" id="guide">規則說明</button>
       <button class="btn debug-tools" id="sfx" hidden>音效</button>
-      <button class="btn" id="resign">認輸離開</button>
+      <button class="btn side-toggle" id="sideBtn" aria-label="座位與戰報">戰報</button>
       <button class="btn controls-toggle" id="moreBtn" aria-label="更多設定">⋯</button>
       <div class="controls-more" id="moreBox">
+        <button class="btn" id="online">多人連線</button>
+        <button class="btn" id="guide">規則說明</button>
+        <button class="btn" id="resign">認輸離開</button>
         <label class="toggle"><input type="checkbox" id="soundOn" checked> 音效</label>
         <button class="btn" id="restart">重新開局</button>
       </div>
@@ -184,16 +185,19 @@
     <!-- 「換你囉」的橫幅（Lynch 要求）。不論輪到誰都佔一樣的高度——
          輪到別人時顯示「等 XX 出手」，所以它出現／消失不會推動下面的面板。 -->
     <div class="turnbanner" id="turnBanner"></div>
-    <section class="panel">
-      <h2 class="panel-title">座位</h2>
-      <ul class="seats" id="seats"></ul>
-    </section>
-    <section class="panel">
-      <h2 class="panel-title">戰報</h2>
-      <ol class="log" id="log"></ol>
-    </section>
+    <!-- 手機上座位與戰報收進「戰報」按鈕打開的面板，棋盤才不用跟它們搶一屏 -->
+    <div class="side-sheet">
+      <section class="panel">
+        <h2 class="panel-title">座位</h2>
+        <ul class="seats" id="seats"></ul>
+      </section>
+      <section class="panel">
+        <h2 class="panel-title">戰報</h2>
+        <ol class="log" id="log"></ol>
+      </section>
+    </div>
   </aside>
 </div>
-<script type="module" src="app.js?v=227"></script>
+<script type="module" src="app.js?v=228"></script>
 </body>
 </html>

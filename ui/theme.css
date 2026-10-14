@@ -155,8 +155,10 @@ body {
 /* ⚠ 只有「戰報」那一塊可以被壓縮，座位表不行。
    座位表被壓到的時候會**少顯示一家**——Lynch 實機：斷線回來之後
    「胖球小可愛可以玩，但我的介面看不到他」，其實是第四列被切掉了。 */
-.side > .turnbanner, .side > .panel { flex: 0 0 auto; }
-.side > .panel:has(.log) { flex: 1 1 auto; min-height: 120px; }
+.side-sheet { display: contents; }                 /* 桌機：不存在，面板照常排在側欄 */
+.side-toggle { display: none; }
+.side > .turnbanner, .side .panel { flex: 0 0 auto; }
+.side .panel:has(.log) { flex: 1 1 auto; min-height: 120px; }
 .panel {
   background: var(--panel-bg); border-radius: var(--radius);
   padding: 10px 12px; border: 1px solid var(--panel-line); min-height: 0;
@@ -881,3 +883,40 @@ button.match-seat:hover { background: rgba(47,95,208,.07); }
 .lobby-cell-ready.is-ready { color: #2f8a4c; font-weight: 700; }
 /* 公開桌：最高的狀態是「名字＋座位號＋準備狀態＋請離座按鈕」，一開始就留好這個高度 */
 .lobby-cross.is-public .lobby-cell { min-height: 118px; align-content: start; }
+
+
+/* ── 手機：整個遊戲畫面就是一屏，棋盤佔最大 ────────────────────────────
+   Lynch 10/14 實機：「點到棋盤他就會自動置中，畫面晃得很嚴重」「我希望著重在棋盤本身，
+   而不是下面一大堆東西」。晃動來自頁面本身會捲（棋盤拖到底還會 scrollBy、網址列收放、
+   面板長短變動）；所以手機上頁面不准捲：頂欄一行、棋盤吃掉剩下的高度、底下只留一條
+   「換你囉」，座位與戰報收進「戰報」按鈕的面板。 */
+@media (max-width: 620px) {
+  html, body { overflow: hidden; overscroll-behavior: none; }
+  .app {
+    display: flex; flex-direction: column; gap: 6px;
+    height: 100dvh; min-height: 0; overflow: hidden; padding: 8px;
+  }
+  .topbar { flex: none; flex-wrap: nowrap; gap: 8px; align-items: center; }
+  .title { font-size: 16px; }
+  .turn { display: none; }                 /* 底下那條橫幅已經在講輪到誰 */
+  .controls { width: auto; margin-left: auto; flex-wrap: nowrap; gap: 6px; }
+  .controls .btn { padding: 5px 10px; }
+  .side-toggle { display: inline-flex; align-items: center; }
+  .setupbar { flex: none; }
+  .stage { order: 0; flex: 1 1 0; min-height: 0; }
+  .board { width: 100%; height: 100%; max-height: 100%; }
+  .side { flex: none; display: block; }
+  .turnbanner { height: 40px; font-size: 15px; }
+  .turnbanner.is-my-turn { font-size: 16px; }
+  .side-sheet { display: none; }
+  body.side-open .side-sheet {
+    display: flex; flex-direction: column; gap: 8px;
+    position: fixed; left: 8px; right: 8px; bottom: 56px; z-index: 20;
+    max-height: 62dvh; overflow-y: auto; padding: 10px; border-radius: 14px;
+    background: var(--panel-bg); border: 1px solid var(--panel-line);
+    box-shadow: 0 14px 34px rgba(70,48,22,.28);
+  }
+  body.side-open .side .panel { max-height: none; }
+  body.side-open .side .panel:has(.log) { min-height: 0; }
+  body.side-open .side-toggle { background: var(--seat-0); color: #fff; border-color: transparent; }
+}

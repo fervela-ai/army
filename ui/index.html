@@ -14,7 +14,9 @@
 <meta property="og:description" content="四個人，兩兩一隊。對家是你的隊友，但你看不到他的棋子。打開就能玩，不用下載、不用註冊。">
 <meta property="og:image" content="https://army.fervela.ai/share.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="theme.css?v=228">
+<link rel="stylesheet" href="theme.css?v=235">
+<!-- 網站人次（T010，營運長 10/15）：Cloudflare 網站分析，不用 Cookie、不送網址參數；寫法照營運長給的一字不差 -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"433e064bb2644552aaedad8b05834a93","spa":false}'></script>
 </head>
 <body>
 <!-- 棋子的漸層：只是顏料，沒有任何遊戲意義。棋盤是 board.js 畫的，
@@ -35,11 +37,11 @@
   </linearGradient>
   <linearGradient id="face2" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-2) 6%, #fffefa)"/>
-    <stop offset="1" stop-color="#f6e0cf" style="stop-color:color-mix(in srgb, var(--seat-2) 16%, #f4ead6)"/>
+    <stop offset="1" stop-color="#f4dcd6" style="stop-color:color-mix(in srgb, var(--seat-2) 16%, #f4ead6)"/>
   </linearGradient>
   <linearGradient id="face3" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#fffdf4" style="stop-color:color-mix(in srgb, var(--seat-3) 6%, #fffefa)"/>
-    <stop offset="1" stop-color="#e7dcf6" style="stop-color:color-mix(in srgb, var(--seat-3) 16%, #f4ead6)"/>
+    <stop offset="1" stop-color="#f3e6c8" style="stop-color:color-mix(in srgb, var(--seat-3) 16%, #f4ead6)"/>
   </linearGradient>
   <linearGradient id="hide0" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#5b8bf0" style="stop-color:color-mix(in srgb, var(--seat-0) 78%, #ffffff)"/>
@@ -50,12 +52,12 @@
     <stop offset="1" stop-color="#0f7a37" style="stop-color:color-mix(in srgb, var(--seat-1) 82%, #000000)"/>
   </linearGradient>
   <linearGradient id="hide2" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#f5854a" style="stop-color:color-mix(in srgb, var(--seat-2) 78%, #ffffff)"/>
-    <stop offset="1" stop-color="#c04406" style="stop-color:color-mix(in srgb, var(--seat-2) 82%, #000000)"/>
+    <stop offset="0" stop-color="#c86459" style="stop-color:color-mix(in srgb, var(--seat-2) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#972e22" style="stop-color:color-mix(in srgb, var(--seat-2) 82%, #000000)"/>
   </linearGradient>
   <linearGradient id="hide3" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#b06ef2" style="stop-color:color-mix(in srgb, var(--seat-3) 78%, #ffffff)"/>
-    <stop offset="1" stop-color="#7420bf" style="stop-color:color-mix(in srgb, var(--seat-3) 82%, #000000)"/>
+    <stop offset="0" stop-color="#d5ac4c" style="stop-color:color-mix(in srgb, var(--seat-3) 78%, #ffffff)"/>
+    <stop offset="1" stop-color="#a57914" style="stop-color:color-mix(in srgb, var(--seat-3) 82%, #000000)"/>
   </linearGradient>
 </defs></svg>
 
@@ -71,36 +73,44 @@
 </script>
 
 <!-- 進場畫面。Lynch 2026-09-05：「我希望我四國軍棋進場畫面也要是類似這樣好看的。」
-     背景那盤棋是**真的棋盤**（board.js 畫的），不是圖檔——所以不必多載一張大圖，
-     配色改了它也會跟著改。帶 ?room= 進來的人會直接跳過這一頁進房間。 -->
+     v234（B 款暖木，WO-army-1015-04）：背景改成 GPT 畫的棋館場景（img/home/bg-*.webp，
+     由 theme.css 的 .landing 背景帶入），原本 board.js 斜擺畫的那盤棋拿掉——新背景圖桌上已經有一盤，
+     兩盤疊在一起很怪。帶 ?room= 或 #lobby 進來的人會直接跳過這一頁。 -->
 <div class="landing" id="landing" hidden>
-  <div class="landing-art" aria-hidden="true"><svg id="landingBoard"></svg></div>
   <div class="landing-inner">
-    <span class="landing-chip">四人暗棋 · 線上對戰</span>
-    <h1 class="landing-title">四國軍棋</h1>
-    <p class="landing-sub">你和對家一隊，拿下敵方兩面軍旗就贏。<br>和電腦隊友一隊對抗兩家電腦，或把連結丟給朋友。</p>
+    <div class="landing-top">
+      <span class="landing-chip">四人暗棋 · 線上對戰</span>
+      <h1 class="landing-title">四國軍棋</h1>
+      <p class="landing-sub">你和對家一隊，拿下敵方兩面軍旗就贏。<br>和電腦隊友一隊對抗兩家電腦，或把連結丟給朋友。</p>
+    </div>
+    <!-- 手機上這段是空的：讓背景那張桌子露出來（卡片在下面） -->
+    <div class="landing-gap" aria-hidden="true"></div>
     <div class="landing-cards">
-      <button class="landing-card" id="ldSolo">
-        <span class="landing-card-icon">♟</span>
+      <!-- 卡片的 id 與點擊行為不要動（app.js 綁的是 id）；只換長相與圖示 -->
+      <button class="landing-card landing-card--main" id="ldSolo">
+        <img class="landing-card-icon" src="img/home/icon-start.webp?v=235" width="96" height="96" alt="">
         <span><b>開始遊戲</b><small>和電腦隊友一隊，對抗兩家電腦</small></span>
       </button>
       <button class="landing-card" id="ldOnline">
-        <span class="landing-card-icon">⚔</span>
+        <img class="landing-card-icon" src="img/home/icon-online.webp?v=235" width="96" height="96" alt="">
         <span><b>多人連線</b><small>邀請好友 · 雙人合作 / 雙人敵對 / 四人局</small></span>
       </button>
-      <button class="landing-card landing-card--ghost" id="ldGuide">
-        <span class="landing-card-icon">?</span>
+      <button class="landing-card" id="ldGuide">
+        <img class="landing-card-icon" src="img/home/icon-guide.webp?v=235" width="96" height="96" alt="">
         <span><b>新手指南</b><small>沒玩過？三分鐘看懂怎麼玩</small></span>
       </button>
     </div>
-    <p class="landing-foot">
-      <button class="landing-name" id="ldRename" title="改代稱">你的代稱：<b id="ldName">—</b><span class="landing-name-edit">改</span></button>
-    </p>
-    <div class="rating-note" id="ldRating">
-      <img src="rating-general.png" width="48" height="48" alt="普遍級">
-      <span>普遍級，任何年齡皆可玩。請注意使用時間，避免沉迷。<br>本遊戲不得用於賭博或從事違法行為。</span>
+    <div class="landing-meta">
+      <p class="landing-foot">
+        <button class="landing-name" id="ldRename" title="改代稱">你的代稱：<b id="ldName">—</b><span class="landing-name-edit">改</span></button>
+      </p>
+      <p class="landing-foot landing-stats" id="ldStats"></p>
+      <div class="rating-note" id="ldRating">
+        <img src="rating-general.png" width="48" height="48" alt="普遍級">
+        <span>普遍級，任何年齡皆可玩。請注意使用時間，避免沉迷。<br>本遊戲不得用於賭博或從事違法行為。</span>
+      </div>
+      <p class="landing-foot landing-op">營運：Fervela.ai　<a href="mailto:contact@fervela.ai">contact@fervela.ai</a>　<span id="ldVer"></span></p>
     </div>
-    <p class="landing-foot">營運：Fervela.ai　<a href="mailto:contact@fervela.ai">contact@fervela.ai</a>　<span id="ldVer"></span></p>
   </div>
 </div>
 <div class="app">
@@ -169,6 +179,11 @@
     </div>
   </div>
 
+  <!-- 配對大廳與等人畫面（v232，B 款暖木棋館）：原本是彈出框，現在是蓋住整個視窗的滿版頁。
+       背景是 GPT 畫的空桌場景圖（img/lobby/），四個座位是疊在椅子上的真按鈕，內容由 app.js 的
+       renderLobby／openMatchLobby（經由 lbHead、lbSeat、lbFoot）填。z-index 比彈出框低，改代稱、規則說明、被請離座的提示照樣蓋在它上面。 -->
+  <div class="lobby-page" id="lobbyPage" hidden></div>
+
   <div class="overlay" id="overlay" hidden>
     <div class="overlay-card">
       <div class="overlay-emblem" id="overlayEmblem"></div>
@@ -198,6 +213,6 @@
     </div>
   </aside>
 </div>
-<script type="module" src="app.js?v=228"></script>
+<script type="module" src="app.js?v=235"></script>
 </body>
 </html>

@@ -1,16 +1,17 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF, BOARD } from '../engine/src/board.mjs?v=228';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=228';
-import { localSession } from './session.js?v=228';
-import { remoteSession } from './remote-session.js?v=228';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=228';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=228';
-import { buildGuide } from './guide.js?v=228';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=228';
-import { createBoardView } from './board.js?v=228';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=228';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=235';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=235';
+import { localSession } from './session.js?v=235';
+import { remoteSession } from './remote-session.js?v=235';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=235';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=235';
+import { buildGuide } from './guide.js?v=235';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=235';
+import { createBoardView } from './board.js?v=235';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=235';
+import { recordGame, readStats, statsLine } from './stats.js?v=235';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -28,7 +29,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=228），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=235），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
@@ -283,6 +284,8 @@ async function startOnline(code, { seat = null } = {}) {
     });
   } catch (e) {
     online = null;
+    // 從配對大廳點座位進來卻連不上：大廳頁要收掉，下面的「連不上這間房」才有路可走
+    if (lbJoining) { lbJoining = false; lbHide(); }
     // 連不上要有路可以回去——原本按「好」之後就停在一個空棋盤上，
     // 想再打一次房號還得自己找路（GPT 實測回饋）。
     showModal({
@@ -357,7 +360,7 @@ async function syncOnline() {
   const info = session?.roomInfo?.();
   if (!info) return;
   if (info.status === 'lobby') { renderLobby(info); return; }
-  closeModalIfLobby();
+  closeLobbyPageIfOpen();
   setupSeat = session.seatsOwnedBy()[0] ?? 0;
   // ⚠ 一定要在「座位換了」的時候重抓陣型。
   //    只看 status 有沒有變是不夠的：先玩過一局單人再進房間的人，myLayout 還是上一局
@@ -373,23 +376,188 @@ async function syncOnline() {
 
 // 戰報上被點開的那一則（在棋盤上亮出起點與終點）。再點一次就取消。
 let pinnedLog = null;
-let lobbyOpen = false;
+let lobbyOpen = false;            // 等人畫面（某一間房的座位表）正開著
+// 從配對大廳點座位、正在連那一桌：連上之前大廳頁先留著，連上後由等人畫面接手；
+// 萬一那一桌已經開打，syncOnline 要記得把大廳頁收掉（否則它會蓋在棋盤上）。
+let lbJoining = false;
 // 大廳裡被伺服器拒絕的訊息要顯示在大廳上。原本只寫進戰報，而戰報被大廳視窗蓋住，
 // 玩家按了沒反應又看不到理由（Lynch：「我怎麼好像不能選位置」）。
 let lobbyError = '';
 let ignoreLobbyError = '';        // 已知可以忽略的一則錯誤（例如舊伺服器不認得 rename）
-const closeModalIfLobby = () => { if (lobbyOpen) { lobbyOpen = false; closeModal(); } };
+const closeLobbyPageIfOpen = () => {
+  if (lobbyOpen || lbJoining) { lobbyOpen = false; lbJoining = false; lbHide(); }
+};
 
 const textBlock = (t) => { const d = document.createElement('div'); d.className = 'modal-lead'; d.textContent = t; return d; };
+
+// ── 大廳滿版頁（v232，B 款「暖木棋館」，WO-army-1015-03）──────────────────
+// 配對大廳與等人畫面原本是彈出框裡排方框，產品長 10/15 體檢說「陽春」、跟首頁風格斷掉。
+// 改成蓋住整個視窗的一頁：背景是 GPT 畫的空桌場景圖，四個座位是疊在椅子上的真按鈕
+// （產品長條件一：不能整張圖當背景就結束）。
+// ⚠ 流程（坐下、離座、準備、請離座、提早開局、離開）完全沿用原本那一套，這裡只管「畫在哪、長什麼樣」。
+const lobbyPage = document.getElementById('lobbyPage');
+// 畫面位置 → 小人的顏色。跟背景椅子一致：下藍、右綠、上紅、左黃。
+const LB_FIGURE = { bottom: 'blue', right: 'green', top: 'red', left: 'yellow' };
+const lb = (() => {
+  const mk = (tag, cls = '', text = null) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const backdrop = mk('div', 'lb-backdrop');
+  const scene = mk('div', 'lb-scene');
+  const head = mk('header', 'lb-head');
+  const foot = mk('footer', 'lb-foot');
+  lobbyPage?.append(backdrop, scene, head, foot);
+  // 上方標題區、下方按鈕區的實際高度交給 CSS，場景圖就縮放到兩者中間（見 theme.css 的 .lb-scene）。
+  // 量的是真實高度，所以字型、戰績卡、錯誤訊息長短變了也不會讓椅子被按鈕蓋住。
+  const fit = () => {
+    if (!lobbyPage || lobbyPage.hidden) return;
+    lobbyPage.style.setProperty('--top-res', `${Math.ceil(head.offsetHeight)}px`);
+    lobbyPage.style.setProperty('--bot-res', `${Math.ceil(foot.offsetHeight)}px`);
+  };
+  try { const ro = new ResizeObserver(fit); ro.observe(head); ro.observe(foot); } catch { /* 舊瀏覽器：用 CSS 的預設值 */ }
+  return { mk, scene, head, foot, fit };
+})();
+function lbShow(kind) {
+  if (!lobbyPage) return;
+  lobbyPage.dataset.kind = kind;
+  lobbyPage.hidden = false;
+}
+function lbHide() {
+  if (!lobbyPage) return;
+  lobbyPage.hidden = true;
+  lobbyPage.dataset.kind = '';
+}
+const lbButton = (cls, label, onClick) => {
+  const b = lb.mk('button', cls, label);
+  b.type = 'button';
+  if (onClick) b.addEventListener('click', onClick);
+  return b;
+};
+
+// 上方：（返回）＋代稱，小字標籤，深綠大標題，人數膠囊。extra 放在膠囊下面（戰績卡）。
+function lbHead({ label, title, pill, onBack = null, onRename, pillSide = null, extra = null }) {
+  const { mk } = lb;
+  const bar = mk('div', 'lb-bar');
+  bar.append(onBack ? lbButton('lb-back', '‹ 返回', onBack) : mk('span'));
+  // 「改代稱」保留，但放在不搶眼的右上角小字
+  const nm = lbButton('lb-name', null, onRename);
+  nm.title = '改代稱';
+  nm.append('你的代稱：', mk('b', '', playerName() || '（還沒取名）'), mk('span', 'lb-name-edit', '改'));
+  bar.append(nm);
+  const pillRow = mk('div', 'lb-pill-row');
+  const p = mk('div', 'lb-pill');
+  p.append(mk('span', 'lb-pill-icon'), mk('span', '', pill));
+  pillRow.append(p);
+  if (pillSide) pillRow.append(pillSide);
+  lb.head.replaceChildren(bar, mk('div', 'lb-label', label), mk('h2', 'lb-title', title), pillRow,
+    ...(extra ? [extra] : []));
+}
+
+// 戰績小卡（照 戰績小卡.png）：三格＋一行「跟真人／跟電腦」。資料只讀 stats.js，不改它的格式。
+// 勝率的算法跟首頁那行（statsLine）一致：贏 ÷（贏＋輸），和局不算。
+function lbStatsCard() {
+  const { mk } = lb;
+  let st;
+  try { st = readStats(localStorage); } catch { st = { played: 0 }; }
+  const card = mk('div', 'lb-stats');
+  card.append(mk('div', 'lb-stats-title', '你的戰績'));
+  if (!st.played) {
+    card.classList.add('is-empty');
+    card.append(mk('div', 'lb-stats-empty', '還沒下過，先來一局吧'));
+    return card;
+  }
+  const decided = st.wins + st.losses;
+  const rate = decided ? Math.round(st.wins / decided * 100) : 0;
+  const cell = (k, n, unit) => {
+    const c = mk('div', 'lb-stats-cell');
+    c.append(mk('span', 'lb-stats-k', k), mk('b', 'lb-stats-n', String(n)), mk('span', 'lb-stats-u', unit));
+    return c;
+  };
+  const cells = mk('div', 'lb-stats-cells');
+  cells.append(cell('已下', st.played, '局'), cell('贏', st.wins, '局'), cell('勝率', rate, '%'));
+  card.append(cells, mk('div', 'lb-stats-sub', `跟真人 ${st.vsHuman} 局・跟電腦 ${st.vsAI} 局`));
+  return card;
+}
+
+// 一個座位：疊在背景椅子上的元素。三種狀態——
+//   空位：「坐這裡」小牌＋呼吸光暈（整張椅子都可以點）；已經坐下的人看到的空位是「等待中」，不能點。
+//   有人：Q 版小人＋名字小牌；電腦補位顯示「電腦」、小人半透明。
+//   自己：小人＋「你」小牌（醒目）＋小小的「離座」。
+// meta 是名字下面那行小字（隊友／敵方・準備狀態），action 是名字旁邊的小按鈕（離座／請離座）。
+function lbSeat({ pos, who = null, onSit = null, plate = null, meta = '', action = null, ready = false }) {
+  const { mk } = lb;
+  const el = mk(onSit ? 'button' : 'div', `lb-seat lb-seat--${pos}`);
+  el.dataset.pos = pos;
+  const info = mk('span', 'lb-info');
+  const row = mk('span', 'lb-row');
+  info.append(row);
+  if (!who) {
+    el.classList.add('is-empty');
+    if (onSit) { el.type = 'button'; el.addEventListener('click', onSit); el.classList.add('is-open'); }
+    el.append(mk('span', 'lb-glow'));
+    row.append(mk('span', 'lb-plate', plate ?? (onSit ? '坐這裡' : '等待中')));
+  } else {
+    if (who.me) el.classList.add('is-me');
+    if (who.ai) el.classList.add('is-ai');
+    if (ready) el.classList.add('is-ready');
+    const img = mk('img', 'lb-fig');
+    img.src = `img/lobby/player-${LB_FIGURE[pos]}.webp`;
+    img.alt = '';
+    img.draggable = false;
+    el.append(img);
+    row.append(mk('span', 'lb-plate', who.name));
+    if (action) row.append(lbButton('btn btn--tiny lb-act', action.label, action.onClick));
+  }
+  if (meta) info.append(mk('span', 'lb-meta', meta));
+  el.append(info);
+  return el;
+}
+
+// 下方：（房號大字＋複製邀請連結）、一行說明（有錯誤時換成錯誤）、主按鈕、次按鈕、（規則說明）。
+// 說明那一行永遠佔一行：錯誤出現或消失時，按鈕跟椅子都不會被推動。
+function lbFoot({ room = null, hint = '', error = '', primary = null, secondary = null, links = false }) {
+  const { mk } = lb;
+  const parts = [];
+  if (room) parts.push(room);
+  const line = mk('div', `lb-hint${error ? ' is-error' : ''}`, error || hint || ' ');
+  if (error) line.setAttribute('role', 'alert');
+  parts.push(line);
+  const acts = mk('div', 'lb-actions');
+  if (primary) {
+    const b = lbButton(`btn ${primary.done ? '' : 'btn--primary '}lb-btn lb-btn--main${primary.done ? ' is-done' : ''}`,
+      primary.label, primary.onClick);
+    b.disabled = !!primary.disabled;
+    acts.append(b);
+  }
+  if (secondary) acts.append(lbButton('btn lb-btn', secondary.label, secondary.onClick));
+  parts.push(acts);
+  if (links) {
+    const lk = mk('div', 'lb-links');
+    lk.append(lbButton('lb-link', '規則說明', () => openGuide()));
+    // 分級標示：首頁有一份完整的；這裡留一個小的，免得從 #lobby 直接進來的人一次都沒看到
+    const rate = mk('span', 'lb-rating');
+    const img = mk('img');
+    img.src = 'rating-general.png'; img.width = 20; img.height = 20; img.alt = '普遍級';
+    rate.append(img, '普遍級');
+    lk.append(rate);
+    parts.push(lk);
+  }
+  lb.foot.replaceChildren(...parts);
+}
 
 // 大廳：誰坐哪、邀請連結、開始。每次伺服器推狀態就整個重畫（人少、很便宜）。
 let lobbyKickTimer = null;
 function renderLobby(info) {
   clearTimeout(lobbyKickTimer);
+  lbJoining = false;
   // 配對大廳的公開桌才有 lobby（準備／請離座，Lynch 2026-09-29）；朋友房沒有這一層
   const pub = info.lobby ?? null;
   if (info.you?.kicked) {
     lobbyOpen = false;
+    lbKickedFrom.add(info.code);        // 回大廳後不要再把這一桌擺到他面前（他坐不回去）
     showModal({ title: `房間 ${info.code}`, body: textBlock('桌主請你離開這一桌了。回大廳換一桌吧。'),
       actions: [{ label: '回大廳', primary: true, onClick: () => {
         session?.close?.(); online = null;
@@ -399,153 +567,94 @@ function renderLobby(info) {
       } }] });
     return;
   }
-  const wrap = document.createElement('div');
   // 用 # 而不是 ?room=：短、好念、好打，而且靜態站不需要任何路由設定就吃得下。
   // Lynch：「我希望網址精簡一點，譬如不要有 ?room 這樣太難打字。」
   const link = `${location.origin}${location.pathname}#${info.code}`;
 
-  wrap.append(textBlock('把連結或房號給朋友，他就能進到這一間。'));
-
-  // 連結＋一顆明確的「複製」。原本只有一個看起來像文字的框（點了其實會複製），
-  // 但沒人看得出來可以按（GPT 實測回饋）。
-  const linkRow = document.createElement('div');
-  linkRow.className = 'lobby-link';
-  const box = document.createElement('div');
-  box.className = 'report-code lobby-link-box';
-  box.textContent = link;
-  const copy = document.createElement('button');
-  copy.className = 'btn';
-  copy.textContent = '複製連結';
-  const doCopy = () => {
-    navigator.clipboard?.writeText(link);
-    copy.textContent = '已複製 ✓';
-    setTimeout(() => { copy.textContent = '複製連結'; }, 1600);
-  };
-  box.addEventListener('click', doCopy);
-  copy.addEventListener('click', doCopy);
-  linkRow.append(box, copy);
-  wrap.append(linkRow);
-
-  const me = document.createElement('div');
-  me.className = 'lobby-me';
-  const meName = document.createElement('span');
-  meName.innerHTML = `你的代稱：<b>${playerName() || '（還沒取名）'}</b>　房號 <b>${info.code}</b>`;
-  const meBtn = document.createElement('button');
-  meBtn.className = 'btn';
-  meBtn.textContent = '改代稱';
-  meBtn.addEventListener('click', renameMe);
-  me.append(meName, meBtn);
-  wrap.append(me);
-
-  // 座位排成十字，跟棋盤上的相對位置一致（GPT 建議，比「1、3 同隊」那段文字直覺）。
-  // 已經入座的人：自己一定在下方，其餘照行棋順序逆時針擺（右、對面、左）——
-  // 那正是開局後畫面會呈現的樣子。還沒入座的人：以 1 號位為基準。
+  // 座位照棋盤的相對位置擺在四張椅子上。已經入座的人：自己一定在下方，其餘照行棋順序
+  // 逆時針擺（右、對面、左）——那正是開局後畫面會呈現的樣子。還沒入座的人：以 1 號位為基準。
   const mine = info.you?.seats ?? [];
   const base = mine[0] ?? 0;
   const at = (offset) => (base + offset) % 4;
-  const cross = document.createElement('div');
-  cross.className = 'lobby-cross';
-  if (pub) cross.classList.add('is-public');   // 格子固定高度：準備標籤、請離座按鈕出現時版面不跳
   let kickDue = Infinity;               // 最早一個「可以請離座」的時間，到時重畫一次讓按鈕出現
-  const cell = (seat, pos) => {
-    const c = document.createElement('div');
-    c.className = `lobby-cell lobby-cell--${pos} ind-seat${seat}`;
+  const seatEl = (seat, pos) => {
     const who = info.seats?.[seat];
     const isMine = mine.includes(seat);
-    if (isMine) c.classList.add('is-me');
-    const tag = document.createElement('span');
-    tag.className = 'lobby-cell-tag';
-    // 隊別用「你這隊／敵隊」講，比「隊A／隊B」直覺——但沒入座時還沒有「你」，
-    // 那就照實寫成 A／B 兩隊。
-    tag.textContent = mine.length
-      ? (TEAM_OF(seat) === TEAM_OF(base) ? (isMine ? '你' : '隊友') : '敵方')
+    // 隊別用「隊友／敵方」講，比「隊A／隊B」直覺——但沒入座時還沒有「你」，那就照實寫成 A／B 兩隊。
+    const team = mine.length
+      ? (TEAM_OF(seat) === TEAM_OF(base) ? (isMine ? '' : '隊友') : '敵方')
       : (TEAM_OF(seat) === 0 ? 'A 隊' : 'B 隊');
-    const nm = document.createElement('span');
-    nm.className = 'lobby-cell-name';
-    nm.textContent = who
-      ? (who.ai ? '電腦' : who.nickname + (isMine ? '（你）' : ''))
-      : '（空位）';
-    const num = document.createElement('span');
-    num.className = 'lobby-cell-num';
-    num.textContent = `${seat + 1} 號位`;
-    c.append(tag, nm, num);
-    if (pub && who && !who.ai) {
+    if (!who) {
+      return lbSeat({ pos, meta: team,
+        onSit: mine.length ? null : () => { lobbyError = ''; session.send({ type: 'seat', seat }); } });
+    }
+    let meta = team, action = null, ready = false;
+    if (pub && !who.ai) {
       const hostSeat = info.you?.isHost ? mine[0] : null;
-      const isHostCell = pub.hostSeat === seat;
-      const st = document.createElement('span');
-      st.className = 'lobby-cell-ready';
-      if (isHostCell) st.textContent = '桌主';
-      else if (pub.ready.includes(seat)) { st.textContent = '已準備 ✓'; st.classList.add('is-ready'); }
-      else st.textContent = '還沒準備';
-      c.append(st);
+      ready = pub.ready.includes(seat);
+      const st = pub.hostSeat === seat ? '桌主' : (ready ? '已準備 ✓' : '還沒準備');
+      meta = [team, st].filter(Boolean).join('・');
       // 桌主：坐下滿 30 秒還沒準備的人，可以請他離座（時間到才出現按鈕）
-      if (info.isHost && !isMine && !pub.ready.includes(seat) && hostSeat != null) {
-        const at = pub.kickAt[seat] ?? Infinity;
-        if (Date.now() >= at) {
-          const k = document.createElement('button');
-          k.className = 'btn btn--tiny';
-          k.textContent = '請離座';
-          k.addEventListener('click', () => { lobbyError = ''; session.send({ type: 'kick', seat }); });
-          c.append(k);
-        } else {
-          kickDue = Math.min(kickDue, at);
-        }
+      if (info.isHost && !isMine && !ready && hostSeat != null) {
+        const due = pub.kickAt[seat] ?? Infinity;
+        if (Date.now() >= due) action = { label: '請離座', onClick: () => { lobbyError = ''; session.send({ type: 'kick', seat }); } };
+        else kickDue = Math.min(kickDue, due);
       }
     }
-    if (!who && !mine.length) {
-      const b = document.createElement('button');
-      b.className = 'btn btn--tiny';
-      b.textContent = '坐這裡';
-      b.addEventListener('click', () => { lobbyError = ''; session.send({ type: 'seat', seat }); });
-      c.append(b);
-    } else if (isMine) {
-      const b = document.createElement('button');
-      b.className = 'btn btn--tiny';
-      b.textContent = '離座';
-      b.addEventListener('click', () => { lobbyError = ''; session.send({ type: 'unseat', seat }); });
-      c.append(b);
-    }
-    return c;
+    if (isMine) action = { label: '離座', onClick: () => { lobbyError = ''; session.send({ type: 'unseat', seat }); } };
+    return lbSeat({ pos, meta, action, ready,
+      who: { name: who.ai ? '電腦' : (isMine ? '你' : who.nickname), ai: !!who.ai, me: isMine } });
   };
-  cross.append(cell(at(2), 'top'), cell(at(3), 'left'), cell(at(1), 'right'), cell(at(0), 'bottom'));
-  wrap.append(cross);
+  const seatEls = [seatEl(at(2), 'top'), seatEl(at(3), 'left'), seatEl(at(1), 'right'), seatEl(at(0), 'bottom')];
   if (kickDue < Infinity)
     lobbyKickTimer = setTimeout(() => { if (lobbyOpen && session) renderLobby(session.roomInfo()); }, kickDue - Date.now() + 50);
 
-  // 現在幾個人、空位怎麼辦——比讓玩家回想上一頁的說明直覺（GPT 建議）
+  // 現在幾個人、空位怎麼辦——一顆膠囊講完（原本彈出框裡那兩段長說明刪掉，只留下面一行）
   const humans = SEATS.filter(x => info.seats?.[x] && !info.seats[x].ai).length;
-  const count = document.createElement('div');
-  count.className = 'modal-note';
-  count.textContent = `目前 ${humans}/4 人。`
-    + (pub
-      ? '坐滿四人自動開始。人不滿時，其他人都按了「準備好了」，桌主就可以先開，空位由電腦補上。'
-      : (humans < 4 ? '人不滿也可以開始，開局時空位由電腦補上。' : '四家都到齊了。'));
-  wrap.append(count);
+  const pill = pub ? `${humans}／4，坐滿自動開局`
+    : (humans < 4 ? `${humans}／4，人不滿也可以開始` : '4／4，到齊了');
 
-  const tip = document.createElement('div');
-  tip.className = 'modal-note';
-  tip.textContent = '坐在對面的是隊友，左右兩家是敵人。'
-    + '不論你坐哪一位，開局後你的棋子都會在畫面最下方。';
-  wrap.append(tip);
-  if (lobbyError) {
-    const err = document.createElement('div');
-    err.className = 'lobby-error';
-    err.textContent = lobbyError;
-    wrap.append(err);
+  // 朋友房：房號大字＋「複製邀請連結」（v230：不露網址）。公開桌不必找人，不放這一列。
+  let room = null;
+  if (!pub) {
+    room = lb.mk('div', 'lb-room');
+    const box = lb.mk('div', 'lb-room-code');
+    box.append(lb.mk('span', 'lb-room-k', '房號'), lb.mk('b', '', info.code));
+    const copy = lbButton('btn lb-copy', '複製邀請連結');
+    copy.addEventListener('click', () => {
+      navigator.clipboard?.writeText(link);
+      copy.textContent = '已複製 ✓';
+      setTimeout(() => { copy.textContent = '複製邀請連結'; }, 1600);
+    });
+    room.append(box, copy);
   }
 
-  const actions = [];
-  if (info.isHost) actions.push({ label: '開始遊戲', primary: true,
-    onClick: () => { lobbyError = ''; session.send({ type: 'start' }); } });
+  let hint;
+  const myReady = pub && mine.length ? pub.ready.includes(mine[0]) : false;
+  if (!mine.length) hint = '點一張空椅子坐下';
+  else if (pub) hint = info.isHost ? '其他人都按了「我準備好了」，就能提早開局'
+    : (myReady ? '等桌主開局，坐滿四人也會自動開始' : '按「我準備好了」，桌主就能提早開局');
+  else hint = '對面是隊友，左右是敵人；開局後你一律在下方';
+
+  let primary = null;
+  if (info.isHost) primary = { label: pub ? '提早開局（空位由電腦補）' : '開始遊戲',
+    onClick: () => { lobbyError = ''; session.send({ type: 'start' }); } };
   else if (pub && mine.length) {
-    const ready = pub.ready.includes(mine[0]);
-    actions.push({ label: ready ? '取消準備' : '準備好了', primary: !ready,
-      onClick: () => { lobbyError = ''; session.send({ type: 'ready', ready: !ready }); } });
+    primary = myReady
+      ? { label: '已準備 ✓　再按一下取消', done: true, onClick: () => { lobbyError = ''; session.send({ type: 'ready', ready: false }); } }
+      : { label: '我準備好了', onClick: () => { lobbyError = ''; session.send({ type: 'ready', ready: true }); } };
   }
-  actions.push({ label: '離開', onClick: () => { session?.close?.(); online = null; closeModal(); newGame(); } });
+  const secondary = { label: '離開', onClick: () => {
+    session?.close?.(); online = null; lobbyOpen = false; lbHide(); newGame();
+  } };
 
   lobbyOpen = true;
-  showModal({ title: `房間 ${info.code}`, body: wrap, actions });
+  lbShow('room');
+  lbHead({ label: pub ? '配對大廳' : `房間 ${info.code}`, title: mine.length ? '等人到齊' : '選個位置坐下',
+    pill, onRename: renameMe });
+  lb.scene.replaceChildren(...seatEls);
+  lbFoot({ room, hint, error: lobbyError, primary, secondary });
+  lb.fit();
 }
 
 function startTicker() {
@@ -932,7 +1041,8 @@ function refresh() {
   } else if (viewSeatOverride != null) {
     els.turn.textContent = `你走完了，換 ${nameOf(currentSeat())}`;
   } else {
-    els.turn.textContent = busy ? `${nameOf(currentSeat())} 思考中…` : `輪到 ${nameOf(currentSeat())}`;
+    els.turn.textContent = busy ? `${nameOf(currentSeat())} 思考中…`
+      : NARROW ? nameOf(currentSeat()) : `輪到 ${nameOf(currentSeat())}`;
   }
 
   els.seats.replaceChildren(...SEATS.map(s => {
@@ -1179,8 +1289,9 @@ async function saveGameRecord(result) {
   try {
     const rec = await session.record();
     const all = JSON.parse(localStorage.getItem(GAMES_KEY) ?? '[]');
+    const at = Date.now();
     all.unshift({
-      at: Date.now(),
+      at,
       code: gameCode,
       player: playerName(),
       aiVersion: AI_VERSION, uiVersion: UI_VERSION,
@@ -1191,6 +1302,18 @@ async function saveGameRecord(result) {
       plies: S.plies,
     });
     localStorage.setItem(GAMES_KEY, JSON.stringify(all.slice(0, 10)));
+    try {
+      const room = online ? session.roomInfo() : null;
+      const people = (room?.seats ?? []).filter(s => s && !s.ai);
+      const humans = online
+        ? room?.mode === 'four' ? people.length
+          : new Set(people.map(s => s.playerId ?? s.id ?? s.nickname)).size
+        : humansInGame().length;
+      // 同一間房可以連下好幾局，只用房號會把第二局當成重複；加上步數區分
+      recordGame(localStorage, { code: `${gameCode}:${S.plies}`, at, result,
+        myTeam: !online && humans > 1 ? null : TEAM_OF(mySeat()), humans });
+      paintLandingStats();
+    } catch { /* 戰績存不下也不影響棋局或棋譜 */ }
     uploadRecord(all[0]);
   } catch { /* 棋譜存不下不該影響遊戲 */ }
 }
@@ -1443,89 +1566,110 @@ const ONLINE_MODES = [
 ];
 
 // ── 配對大廳（Lynch 2026-09-25）──────────────────────────────
-// 不認識的人也能湊一桌：大廳列出所有桌子，點空位就坐下，進到那一桌的等待畫面。
+// 不認識的人也能湊一桌：點空位就坐下，進到那一桌的等待畫面。
 // 坐滿四個真人自動開局；人不夠時第一個坐下的人（桌主）可以提早開，空位補電腦。
-// 清單每 3 秒刷新一次。桌子的順序固定（照開桌先後），刷新時不會在手指下面換位置。
+// 清單每 3 秒刷新一次。
+// v232（B 款）：畫面是一張桌子四張椅子，所以一次只畫「一桌」——有人在等的桌子優先
+// （人最多的那桌），都沒人就是那張永遠留著的空桌。別桌也有人在等時，膠囊旁邊出現「換一桌」。
+// 選中的桌子刷新時不換（照桌號記住），手指下面的座位不會突然變成另一桌的。
 const LOBBY_POLL_MS = 3000;
+let matchToken = 0;
+const lbKickedFrom = new Set();         // 被請離座的桌子：伺服器不讓他坐回去，大廳也就不再選這一桌給他看                     // 每開一次大廳就換號，舊的輪詢看到號碼不對就自己停
 function openMatchLobby() {
-  const wrap = document.createElement('div');
-  wrap.append(textBlock('點一個空位坐下，坐滿四人就開始。人不夠的話，其他人都按了「準備好了」，第一個坐下的人（桌主）就可以先開，空位由電腦補上。'));
-  const me = document.createElement('div');
-  me.className = 'lobby-me';
-  const meName = document.createElement('span');
-  const meBtn = document.createElement('button');
-  meBtn.className = 'btn';
-  meBtn.textContent = '改代稱';
-  // 改代稱會借用同一個對話框，改完再回到大廳
-  meBtn.addEventListener('click', async () => { stop(); await renameMe(); openMatchLobby(); });
-  const showName = () => { meName.innerHTML = ''; meName.append('你的代稱：', Object.assign(document.createElement('b'), { textContent: playerName() || '（還沒取名）' })); };
-  showName();
-  me.append(meName, meBtn);
-  const grid = document.createElement('div');
-  grid.className = 'match-grid';
-  const status = document.createElement('div');
-  status.className = 'modal-note match-status';
-  status.textContent = '讀取桌子中…';
-  wrap.append(me, grid, status, ratingNote());
-
-  let timer = null;
+  closeModal();                         // 從「多人連線」或「被請離座」的彈出框過來的，先把它收掉
+  lobbyOpen = false;
+  const token = ++matchToken;
+  let timer = null, tables = null, failed = false, pickCode = null;
   const stop = () => { clearTimeout(timer); timer = null; };
+  const alive = () => token === matchToken && lobbyPage && !lobbyPage.hidden && lobbyPage.dataset.kind === 'match';
   const sitAt = async (code, seat) => {
     stop();
+    matchToken++;                       // 還在路上的那次輪詢回來也不要再畫
     await askNickname();                // 還沒取名的人先取名：大廳上別人看到的就是這個
-    closeModal();
+    lbJoining = true;                   // 大廳頁留著，連上那一桌後由等人畫面接手
     await startOnline(code, { seat });
   };
-  // 座位位置照棋盤：1 號位在下、2 右、3 上、4 左（1、3 同隊，2、4 同隊）
-  const POS = ['bottom', 'right', 'top', 'left'];
-  // 對局中的桌子只寫一行「另有 N 桌對局中」，不畫出來：
-  // 手機上一桌就佔半個螢幕，畫出來的話空位會被擠到要捲很久才看得到（本機 375px 實測）。
-  const render = (tables) => {
-    grid.replaceChildren(...tables.filter(tb => tb.status === 'waiting').map((tb) => {
-      const card = document.createElement('div');
-      card.className = `match-table${tb.status === 'waiting' ? '' : ' is-playing'}`;
-      const mid = document.createElement('div');
-      mid.className = 'match-mid';
-      // 不寫「第幾桌」：桌子打完會從清單消失，編號就會跟著變，玩家會以為換了一桌
-      mid.textContent = tb.status === 'waiting' ? `${tb.seats.filter(Boolean).length} / 4` : '對局中';
-      card.append(mid);
-      tb.seats.forEach((who, seat) => {
-        const c = document.createElement(!who && tb.status === 'waiting' ? 'button' : 'div');
-        c.className = `match-seat match-seat--${POS[seat]} ind-seat${seat}${who ? ' is-taken' : ''}`;
-        c.textContent = who || (tb.status === 'waiting' ? '坐這裡' : '');
-        if (c.tagName === 'BUTTON') {
-          c.type = 'button';
-          c.title = `${seat + 1} 號位（${TEAM_OF(seat) === 0 ? 'A' : 'B'} 隊）`;
-          c.addEventListener('click', () => sitAt(tb.code, seat));
-        }
-        card.append(c);
+  const seated = (t) => t.seats.filter(Boolean).length;
+  const hasRoom = (t) => t.status === 'waiting' && t.seats.some(s => !s) && !lbKickedFrom.has(t.code);
+  const pickTable = () => {
+    const open = (tables ?? []).filter(hasRoom);
+    let tb = open.find(t => t.code === pickCode);
+    if (!tb) tb = [...open].sort((a, b) => seated(b) - seated(a))[0] ?? null;   // sort 是穩定的：同人數照開桌先後
+    pickCode = tb?.code ?? null;
+    return tb;
+  };
+  const POS = ['bottom', 'right', 'top', 'left'];   // 座位位置照棋盤：1 號位在下、2 右、3 上、4 左
+  let lastKey = '';
+  const render = () => {
+    if (!alive()) return;
+    const tb = pickTable();
+    const n = tb ? seated(tb) : 0;
+    // 別桌也有人在等：給一顆「換一桌」，依開桌先後輪著看
+    const others = (tables ?? []).filter(t => hasRoom(t) && seated(t) > 0 && t.code !== tb?.code);
+    const playing = (tables ?? []).filter(t => t.status !== 'waiting').length;
+    // 每 3 秒刷新一次，但畫面沒變就不要重建：按鈕在手指按下去的那一刻被換掉，
+    // 這一下點擊就不算了（本機實測：剛好撞上刷新的那一按沒反應）。
+    const key = JSON.stringify([!!tables, failed, tb?.code, tb?.seats, others.length, playing,
+      (tables ?? []).map(t => t.status === 'waiting' ? seated(t) : -1), playerName()]);
+    if (key === lastKey) return;
+    lastKey = key;
+    let swap = null;
+    if (others.length) {
+      swap = lbButton('lb-swap', `換一桌（還有 ${others.length} 桌有人等）`, () => {
+        const list = (tables ?? []).filter(t => hasRoom(t) && seated(t) > 0);
+        const i = list.findIndex(t => t.code === pickCode);
+        pickCode = list[(i + 1) % list.length]?.code ?? pickCode;
+        lastKey = '';
+        render();
       });
-      return card;
+    }
+    lbHead({ label: '配對大廳', title: '配對大廳',
+      pill: tables ? `${n}／4，坐滿自動開局` : '讀取桌子中…',
+      // 對局中的桌子不畫出來，只在膠囊旁邊寫一句「另有 N 桌對局中」（放進下方那行會在手機上被截斷）
+      pillSide: swap ?? (playing ? lb.mk('span', 'lb-side-note', `另有 ${playing} 桌對局中`) : null),
+      onBack: () => { stop(); lbHide(); openOnlineMenu(); },
+      onRename: async () => { await renameMe(); lastKey = ''; render(); },
+      extra: lbStatsCard() });
+    lb.scene.replaceChildren(...POS.map((pos, seat) => {
+      const who = tb?.seats[seat];
+      if (who) return lbSeat({ pos, who: { name: who } });
+      return lbSeat({ pos, plate: tb ? null : '…', onSit: tb ? () => sitAt(tb.code, seat) : null });
     }));
+    const waiting = (tables ?? []).filter(t => t.status === 'waiting').reduce((k, t) => k + seated(t), 0);
+    const hint = !tables ? '讀取桌子中…'
+      : (waiting ? `現在有 ${waiting} 個人在等` : '還沒有人在等，你先坐下，有人來就自動開局');
+    const firstEmpty = tb ? tb.seats.findIndex(s => !s) : -1;
+    lbFoot({ hint, error: failed ? '連不上大廳，稍後自動重試…' : '',
+      primary: { label: '坐下等人', disabled: firstEmpty < 0, onClick: () => { if (tb && firstEmpty >= 0) sitAt(tb.code, firstEmpty); } },
+      secondary: { label: '先跟電腦下一局', onClick: () => {
+        stop(); lbHide();
+        // 從約桌連結（#lobby）進來的：網址要清掉，否則下到一半重新整理又被帶回大廳
+        if (location.hash === '#lobby') try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 不影響 */ }
+        newGame();
+      } },
+      links: true });
+    lb.fit();
   };
   let first = true;                     // 第一次輪詢帶 ?open=1，伺服器才數得出「打開大廳幾次」
   const poll = async () => {
-    if (els.modal.hidden || !wrap.isConnected) return stop();
+    if (!alive()) return stop();
     try {
       const res = await fetch(`${GAME_ENDPOINT}/lobby${first ? '?open=1' : ''}`);
       first = false;
       const data = await res.json();
       if (!res.ok || !Array.isArray(data.tables)) throw new Error();
-      if (!wrap.isConnected) return;
-      render(data.tables);
-      const waiting = data.tables.filter(t => t.status === 'waiting')
-        .reduce((n, t) => n + t.seats.filter(Boolean).length, 0);
-      const playing = data.tables.filter(t => t.status !== 'waiting').length;
-      status.textContent = (waiting ? `現在有 ${waiting} 個人在等` : '還沒有人在等，坐下來當第一個吧')
-        + (playing ? `　另有 ${playing} 桌對局中` : '');
+      tables = data.tables;
+      failed = false;
     } catch {
-      if (wrap.isConnected) status.textContent = '連不上大廳，稍後自動重試…';
+      failed = true;
     }
-    if (wrap.isConnected && !els.modal.hidden) timer = setTimeout(poll, LOBBY_POLL_MS);
+    if (!alive()) return stop();
+    render();
+    timer = setTimeout(poll, LOBBY_POLL_MS);
   };
 
-  showModal({ title: '配對大廳', body: wrap,
-    actions: [{ label: '返回', primary: true, onClick: () => { stop(); openOnlineMenu(); } }] });
+  lbShow('match');
+  render();
   poll();
 }
 
@@ -1619,7 +1763,8 @@ function openOnlineMenu(prefill = '') {
   showModal({ title: '多人連線', body: wrap,
     // 取消之後要回得去：從首頁按進來時還沒有任何一局，直接關掉會停在一個空棋盤
     // （Lynch 實測：「按取消會變成這樣，感覺怪怪的」）。
-    actions: [{ label: '取消', primary: true, onClick: () => {
+    // 取消是次按鈕：B 款規定金色主按鈕只給「往前走」的那一顆（10/15 iPhone 實測看到取消是金色）
+    actions: [{ label: '取消', onClick: () => {
       closeModal();
       if (!session && landing) landing.hidden = false;
     } }] });
@@ -1727,28 +1872,18 @@ const SEEN_GUIDE = 'army-online:seen-guide';
 // Lynch 2026-09-05：「我希望我四國軍棋進場畫面也要是類似這樣好看的。」
 // 進來先看到它，按了才開局——原本是一進站就自動開一局單人的，
 // 那等於還沒說「這是什麼」就把人丟進棋盤。
-// 背景那盤棋是真的棋盤（同一支 board.js），所以配色一改它也跟著改，不必維護一張圖。
-function paintLandingBoard() {
-  const svg = document.getElementById('landingBoard');
-  if (!svg) return;
-  try {
-    const view = createBoardView(svg, { onNodeClick() {}, onPointerUp() {} });
-    const at = {};
-    for (const [id, node] of BOARD.nodes) {
-      const m = /^P(\d)-r(\d)c\d$/.exec(id);
-      if (!m || node.kind === 'camp') continue;
-      const seat = Number(m[1]);
-      if (Number(m[2]) >= 4) at[id] = { seat };            // 全部畫成暗棋：這是暗棋遊戲的樣子
-    }
-    view.setBottomSeat(0);
-    view.render({ board: { at, revealedFlags: [] }, mySeats: [], viewerSeat: 0,
-      selected: null, moves: [], recentMoves: [], lastMove: null });
-    view.setCamera('full');
-  } catch { /* 純裝飾，畫不出來就算了，不能擋住進場 */ }
-}
+// v234（B 款暖木）：背景改用 GPT 畫的棋館場景圖（theme.css 的 .landing），圖裡桌上已經有一盤棋，
+// 原本用 board.js 斜擺畫的那盤（舊的 paintLandingBoard）拿掉，避免兩盤棋疊在一起。
 
 const landing = document.getElementById('landing');
 const hideLanding = () => { if (landing) landing.hidden = true; };
+function paintLandingStats() {
+  const el = document.getElementById('ldStats');
+  if (!el) return;
+  try { el.textContent = statsLine(readStats(localStorage)); }
+  catch { el.textContent = statsLine({ played: 0 }); }
+}
+paintLandingStats();
 async function enterGame(kind) {
   hideLanding();
   await askNickname();
@@ -1816,5 +1951,4 @@ if (joinCode.toLowerCase() === 'lobby') {
   askNickname().then(() => startOnline(joinCode.toUpperCase()));   // 舊的英數房號要轉大寫，純數字不受影響
 } else {
   if (landing) landing.hidden = false;
-  paintLandingBoard();
 }

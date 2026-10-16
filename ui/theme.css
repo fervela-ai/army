@@ -909,6 +909,10 @@ body {
   .landing-chip { font-size: 13px; padding: 3px 16px; }
   .landing-title { margin: 8px 0 6px; font-size: clamp(40px, 12.5vw, 64px); }
   .landing-sub { font-size: clamp(12.5px, 3.6vw, 16px); line-height: 1.7; }
+  /* 10/17 Miles 看 App 版：系統字體調大時說明會擠成三行、壓到紅椅子上的小人。加一層淡米底，
+     字放大壓到圖也看得清楚（App 殼的文字縮放另請架構長固定 100%）。 */
+  .landing-sub { align-self: stretch; margin: 2px -8px 0; padding: 3px 8px; border-radius: 12px;  /* 左右負邊距：底往外推，文字寬度不變，一般字級不會因此多斷一行 */
+    background: rgba(255,250,240,.78); box-shadow: 0 2px 8px rgba(90,60,25,.10); }
   /* 桌子那一段：至少留 110px，有空間就全部給它（卡片自然沉到桌子下緣） */
   .landing-gap { flex: 1 0 110px; }
   .landing-cards { gap: 8px; }

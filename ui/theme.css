@@ -1349,3 +1349,8 @@ button.lb-seat { cursor: pointer; }
   .lb-seat.is-me .lb-plate { font-size: 15px; padding: 4px 16px; }
   .lb-room-code b { font-size: 26px; }
 }
+
+/* 程式沒載入完成時的提示（index.html 的看門狗放進首頁最上面） */
+.boot-fail { margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; font-size: 14px; line-height: 1.6;
+  background: #fff4e0; border: 1.5px solid #c99419; color: #3a2a18; }
+.boot-fail .btn { margin-top: 8px; }

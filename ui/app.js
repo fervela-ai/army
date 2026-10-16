@@ -1,17 +1,17 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=235';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=235';
-import { localSession } from './session.js?v=235';
-import { remoteSession } from './remote-session.js?v=235';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=235';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=235';
-import { buildGuide } from './guide.js?v=235';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=235';
-import { createBoardView } from './board.js?v=235';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=235';
-import { recordGame, readStats, statsLine } from './stats.js?v=235';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=236';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=236';
+import { localSession } from './session.js?v=236';
+import { remoteSession } from './remote-session.js?v=236';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=236';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=236';
+import { buildGuide } from './guide.js?v=236';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=236';
+import { createBoardView } from './board.js?v=236';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=236';
+import { recordGame, readStats, statsLine } from './tally.js?v=236';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -29,8 +29,10 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=235），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=236），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
+// 告訴 index.html 的看門狗：程式已經跑起來了（沒跑起來它會在首頁顯示「載入失敗」的提示）
+window.__armyBooted = true;
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
 
 // 自己去看有沒有新版。GitHub Pages 給 index.html 的是 cache-control: max-age=600，
@@ -456,7 +458,7 @@ function lbHead({ label, title, pill, onBack = null, onRename, pillSide = null, 
     ...(extra ? [extra] : []));
 }
 
-// 戰績小卡（照 戰績小卡.png）：三格＋一行「跟真人／跟電腦」。資料只讀 stats.js，不改它的格式。
+// 戰績小卡（照 戰績小卡.png）：三格＋一行「跟真人／跟電腦」。資料只讀 tally.js（原 stats.js），不改它的格式。
 // 勝率的算法跟首頁那行（statsLine）一致：贏 ÷（贏＋輸），和局不算。
 function lbStatsCard() {
   const { mk } = lb;

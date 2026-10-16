@@ -1,3 +1,4 @@
+// 檔名刻意不叫 game-stats：廣告阻擋清單常擋檔名含 stats 的檔案（10/16 Brave 踩到 ui/stats.js），一起避開。
 // 一局的結算統計：殘子、出兵勝率、炸彈的獎勵、成就與頭銜要用的細項。
 //
 // 為什麼獨立成一個模組：本機版（ui/session.js）與連線版（ui/remote-session.js）

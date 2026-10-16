@@ -1,3 +1,4 @@
+// 檔名刻意不叫 stats.js：Brave 等廣告阻擋清單會把 stats.js 當流量統計擋掉，整個遊戲就載不起來（10/16 Miles 手機 Brave 實際踩到）。
 // 本機戰績：只存加總與最後一局代號，不含玩家身分。
 const STATS_KEY = 'army-online:stats';
 const EMPTY = Object.freeze({ v: 1, played: 0, wins: 0, losses: 0, draws: 0, vsHuman: 0, vsAI: 0, lastCode: null });

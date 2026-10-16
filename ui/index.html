@@ -14,7 +14,7 @@
 <meta property="og:description" content="四個人，兩兩一隊。對家是你的隊友，但你看不到他的棋子。打開就能玩，不用下載、不用註冊。">
 <meta property="og:image" content="https://army.fervela.ai/share.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="theme.css?v=235">
+<link rel="stylesheet" href="theme.css?v=236">
 <!-- 網站人次（T010，營運長 10/15）：Cloudflare 網站分析，不用 Cookie、不送網址參數；寫法照營運長給的一字不差 -->
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"433e064bb2644552aaedad8b05834a93","spa":false}'></script>
 </head>
@@ -88,15 +88,15 @@
     <div class="landing-cards">
       <!-- 卡片的 id 與點擊行為不要動（app.js 綁的是 id）；只換長相與圖示 -->
       <button class="landing-card landing-card--main" id="ldSolo">
-        <img class="landing-card-icon" src="img/home/icon-start.webp?v=235" width="96" height="96" alt="">
+        <img class="landing-card-icon" src="img/home/icon-start.webp?v=236" width="96" height="96" alt="">
         <span><b>開始遊戲</b><small>和電腦隊友一隊，對抗兩家電腦</small></span>
       </button>
       <button class="landing-card" id="ldOnline">
-        <img class="landing-card-icon" src="img/home/icon-online.webp?v=235" width="96" height="96" alt="">
+        <img class="landing-card-icon" src="img/home/icon-online.webp?v=236" width="96" height="96" alt="">
         <span><b>多人連線</b><small>邀請好友 · 雙人合作 / 雙人敵對 / 四人局</small></span>
       </button>
       <button class="landing-card" id="ldGuide">
-        <img class="landing-card-icon" src="img/home/icon-guide.webp?v=235" width="96" height="96" alt="">
+        <img class="landing-card-icon" src="img/home/icon-guide.webp?v=236" width="96" height="96" alt="">
         <span><b>新手指南</b><small>沒玩過？三分鐘看懂怎麼玩</small></span>
       </button>
     </div>
@@ -113,6 +113,31 @@
     </div>
   </div>
 </div>
+<script>
+// 首頁先自己打開，不等遊戲程式（10/16 Miles 手機 Brave：程式被擋或還在下載時，只看到一塊空棋盤）。
+// 帶房號、#lobby 進來的人照舊不顯示首頁，交給 app.js。
+// 看門狗：8 秒後程式還沒跑起來（例如被廣告阻擋擋掉一支檔），就在首頁說清楚怎麼辦。
+(function () {
+  var q = new URLSearchParams(location.search);
+  var deep = location.hash.replace(/^#/, '') || q.get('room') || q.get('r');
+  var ld = document.getElementById('landing');
+  if (ld && !deep) ld.hidden = false;
+  setTimeout(function () {
+    if (window.__armyBooted || !ld) return;
+    ld.hidden = false;
+    var box = document.createElement('div');
+    box.className = 'boot-fail';
+    box.innerHTML = '<b>遊戲程式沒有載入完成。</b><br>如果你開了廣告阻擋（例如 Brave 的盾牌），請對 army.fervela.ai 關掉後重新整理；網路慢的話，稍等一下再重新整理。';
+    var btn = document.createElement('button');
+    btn.className = 'btn btn--primary';
+    btn.textContent = '重新整理';
+    btn.onclick = function () { location.reload(); };
+    box.appendChild(btn);
+    var inner = ld.querySelector('.landing-inner') || ld;
+    inner.insertBefore(box, inner.firstChild);
+  }, 8000);
+})();
+</script>
 <div class="app">
   <header class="topbar">
     <!-- 標題就是回首頁的入口（Lynch：「這頁回不到首頁？」）。
@@ -213,6 +238,6 @@
     </div>
   </aside>
 </div>
-<script type="module" src="app.js?v=235"></script>
+<script type="module" src="app.js?v=236"></script>
 </body>
 </html>

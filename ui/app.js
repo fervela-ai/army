@@ -1,17 +1,17 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=237';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=237';
-import { localSession } from './session.js?v=237';
-import { remoteSession } from './remote-session.js?v=237';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=237';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=237';
-import { buildGuide } from './guide.js?v=237';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=237';
-import { createBoardView } from './board.js?v=237';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=237';
-import { recordGame, readStats, statsLine } from './tally.js?v=237';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=240';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=240';
+import { localSession } from './session.js?v=240';
+import { remoteSession } from './remote-session.js?v=240';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=240';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=240';
+import { buildGuide } from './guide.js?v=240';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=240';
+import { createBoardView } from './board.js?v=240';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=240';
+import { recordGame, readStats, statsLine } from './tally.js?v=240';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -29,8 +29,22 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=237），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=240），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
+// 漏斗套件可能被廣告阻擋；載入失敗也不能擋住遊戲。
+// 套件還沒載入前叫到的步驟先排著，載入後補送；被擋就永遠只是排著，不影響任何畫面。
+// 本機（localhost）送到不存在的路徑，資料只留在裝置的暫存，不會灌進正式收集端。
+const funnelEarly = [];
+const funnel = { step: (s) => { if (funnelEarly.length < 10) funnelEarly.push(s); } };
+const FUNNEL_LOCAL = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+import('./fvs.js?v=240').then(m => {
+  const F = m.default ?? m.FervelaFunnel;
+  F.init({ product: 'army', version: UI_VERSION, platform: 'web',
+    endpoint: FUNNEL_LOCAL ? '/__funnel_dev' : 'https://t.fervela.ai/e',
+    allow: ['首次打開', '取好代稱', '進入棋局', '確定佈陣', '第一個成果'] });
+  funnel.step = (s) => { try { F.step(s); } catch {} };
+  funnelEarly.splice(0).forEach(funnel.step);
+}).catch(() => {});
 // 告訴 index.html 的看門狗：程式已經跑起來了（沒跑起來它會在首頁顯示「載入失敗」的提示）
 window.__armyBooted = true;
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
@@ -159,7 +173,7 @@ function askNickname({ force = false, lead: leadText = null } = {}) {
     const note = document.createElement('div');
     note.className = 'modal-note';
     // 說清楚會留下什麼。朋友有權知道自己打的字會被存起來。
-    note.textContent = '代稱會跟這局的棋譜一起存起來，只用來看棋局怎麼下的。請不要用真名。';
+    note.textContent = '代稱會被同桌和大廳的人看見，也會存進對局紀錄，請不要用真名。';  // 法遵 10/19：普遍級，小朋友最容易填真名
     wrap.append(lead, input, note, ratingNote());
     showModal({
       title: '四國軍棋',
@@ -167,6 +181,7 @@ function askNickname({ force = false, lead: leadText = null } = {}) {
       actions: [{
         label: force ? '改好了' : '開始', primary: true, onClick: () => {
           localStorage.setItem(PLAYER_KEY, input.value.trim().slice(0, 12) || '無名氏');
+          funnel.step('取好代稱');
           closeModal();
           resolve();
         },
@@ -361,6 +376,7 @@ async function playRemote({ prev, events }) {
 async function syncOnline() {
   const info = session?.roomInfo?.();
   if (!info) return;
+  if (session.seatsOwnedBy()?.length) funnel.step('進入棋局');
   if (info.status === 'lobby') { renderLobby(info); return; }
   closeLobbyPageIfOpen();
   setupSeat = session.seatsOwnedBy()[0] ?? 0;
@@ -616,17 +632,29 @@ function renderLobby(info) {
   const pill = pub ? `${humans}／4，坐滿自動開局`
     : (humans < 4 ? `${humans}／4，人不滿也可以開始` : '4／4，到齊了');
 
-  // 朋友房：房號大字＋「複製邀請連結」（v230：不露網址）。公開桌不必找人，不放這一列。
+  // 朋友房：房號大字＋邀請朋友。公開桌不必找人，不放這一列。
   let room = null;
   if (!pub) {
     room = lb.mk('div', 'lb-room');
     const box = lb.mk('div', 'lb-room-code');
     box.append(lb.mk('span', 'lb-room-k', '房號'), lb.mk('b', '', info.code));
-    const copy = lbButton('btn lb-copy', '複製邀請連結');
-    copy.addEventListener('click', () => {
+    const copy = lbButton('btn lb-copy', '邀請朋友');
+    copy.addEventListener('click', async () => {
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: '四國軍棋',
+            text: '來跟我下一局四國軍棋：點連結直接坐下，不用下載、不用註冊',
+            url: link,
+          });
+          return;
+        } catch (e) {
+          if (e?.name === 'AbortError') return;
+        }
+      }
       navigator.clipboard?.writeText(link);
       copy.textContent = '已複製 ✓';
-      setTimeout(() => { copy.textContent = '複製邀請連結'; }, 1600);
+      setTimeout(() => { copy.textContent = '邀請朋友'; }, 1600);
     });
     room.append(box, copy);
   }
@@ -754,6 +782,7 @@ async function onSetupClick(id) {
 async function confirmSetup() {
   selected = null;
   const { started } = await session.confirmSetup(setupSeat);
+  funnel.step('確定佈陣');
   if (started) {
     clearInterval(ticker);
     addLog('開局', true);
@@ -1288,6 +1317,7 @@ function uploadRecord(record) {
 }
 
 async function saveGameRecord(result) {
+  if (result != null) funnel.step('第一個成果');
   try {
     const rec = await session.record();
     const all = JSON.parse(localStorage.getItem(GAMES_KEY) ?? '[]');
@@ -1891,6 +1921,7 @@ async function enterGame(kind) {
   await askNickname();
   if (kind === 'online') { openOnlineMenu(); return; }
   await newGame();
+  funnel.step('進入棋局');
   if (localStorage.getItem(SEEN_GUIDE)) return;
   try { localStorage.setItem(SEEN_GUIDE, '1'); } catch { /* 存不下不影響 */ }
   openGuide();
@@ -1916,6 +1947,29 @@ document.getElementById('ldOnline')?.addEventListener('click', () => enterGame('
 document.getElementById('ldGuide')?.addEventListener('click', () => openGuide());
 const ldVer = document.getElementById('ldVer');
 if (ldVer) ldVer.textContent = `v${UI_VERSION}`;
+document.getElementById('ldPrivacy')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <p>四國軍棋不用註冊，也不用填任何個人資料。下面是會離開你裝置的資料。</p>
+    <p><strong>一、匿名帳號</strong>：第一次進站時，會自動幫你開一個匿名帳號（一串隨機編號），讓你的對局和戰績接得起來，換手機時可以用「還原碼」接回。我們只存這串編號、建立時間和還原碼的加密值，不知道你是誰。匿名帳號目前會一直保留（見最後「想刪掉資料」）。</p>
+    <p><strong>二、線上對戰</strong>：在配對大廳或朋友房下棋時，你的代稱、座位和棋步會經過我們的伺服器傳給同桌玩家；公開大廳裡的代稱，所有進站的人都看得到。<strong>請不要用真名或別人認得出的名字當代稱。</strong></p>
+    <p><strong>三、對局紀錄</strong>：一局下完（或中途離開）時，會把這局的棋步、勝負、房號、代稱，以及你的瀏覽器類型（用來分辨手機或電腦）送到我們的伺服器，用來讓電腦對手下得更好。不含信箱、電話、位置，也不存你的連線位址（IP）。對局紀錄 180 天後自動刪除。</p>
+    <p><strong>四、網站人次</strong>：用 Cloudflare 網站分析算有多少人來過，不用 Cookie，不記你是誰。</p>
+    <p><strong>五、匿名使用統計</strong>：為了知道大家玩到哪一步就離開、哪裡需要改，四國軍棋會在你<strong>第一次</strong>走到幾個固定步驟時（例如第一次打開、第一次下完一局），送出一則匿名紀錄給我們。每一步、每台裝置只送一次。</p>
+    <ul>
+      <li><strong>只送</strong>：產品名稱、版本、平台（網頁）、步驟名稱、日期（只到哪一天），以及距離第一次打開大約多久（只分「1 分鐘內」「1 小時內」這類區間）。</li>
+      <li><strong>不送</strong>：你的代稱、棋步、房號、帳號、姓名、信箱、電話、位置、裝置或廣告編號。我們不會把這些紀錄對到任何人，也不會跟對局紀錄合併。</li>
+      <li><strong>傳送時</strong>：資料送到 t.fervela.ai（主機由 Cloudflare 提供，Cloudflare 是美國公司）。傳送時網路會帶出你的連線位址（IP），我們不儲存它。</li>
+      <li><strong>保存</strong>：原始紀錄 90 天內自動刪除，之後只留每天的總數。</li>
+      <li><strong>能不能關</strong>：目前不能單獨關閉；開著廣告阻擋時多半不會送出，遊戲照常可玩。</li>
+    </ul>
+    <p>這是 v240 起新增的；之前的版本不會送出。</p>
+    <p><strong>想刪掉資料</strong>：寫信到 contact@fervela.ai，附上你的代稱和大約的對局時間，我們會刪掉你的對局紀錄。匿名帳號只有一串隨機編號和建立時間，我們對不到是誰的；之後的版本會在「⋯」裡加「刪除我的帳號」讓你自己刪。</p>
+    <p>有問題請寫信到 contact@fervela.ai。</p>`;
+  showModal({ title: '隱私說明', body,
+    actions: [{ label: '知道了', primary: true, onClick: closeModal }] });
+});
 
 // 代稱：顯示在首頁，點一下就能改（Lynch：「要有可以改名的位置」）。
 // 放在首頁而不是對局畫面——改名是開局前的事，對局中改會讓棋譜裡同一局出現兩個名字。

@@ -22,8 +22,24 @@ export const NICKNAME_MAX = 12;
 // 避免任何地方不小心用 innerHTML 就變成注入點。不要過度過濾——像 R&B 這種正常名字要留得住。
 export const cleanNickname = (raw) => {
   const kept = [...String(raw ?? '')].filter(ch => ch.codePointAt(0) > 31 && ch !== '<' && ch !== '>');
-  return kept.join('').trim().slice(0, NICKNAME_MAX) || '無名氏';
+  const name = kept.join('').trim().slice(0, NICKNAME_MAX) || '無名氏';
+  return nicknameProblem(name) ? '無名氏' : name;     // 前端已經擋過；這裡是伺服器的最後一道
 };
+
+// 不雅代稱過濾（法遵 10/21：普遍級、公開大廳陌生人看得到，App Store 也要求有過濾）。
+// 只比「詞」不比單字：「幹」「操」單獨出現常是正常字（幹部、操場），所以只擋常見的罵人組合。
+// 比對前拿掉空白與符號，擋「幹 你」「f.u.c.k」這種拆開寫的。冒充官方的字也擋。
+const BAD_WORDS = [
+  '幹你', '幹妳', '幹您', '幹林', '幹恁', '操你', '操妳', '肏', '屌', '屄', '雞掰', '機掰', '雞巴', '靠北', '靠杯', '靠腰',
+  '三小', '媽的', '他媽', '你媽', '妳媽', '去死', '婊', '賤人', '白癡', '白痴', '智障', '腦殘', '廢物', '垃圾人',
+  '做愛', '約炮', '約砲', '色情', '淫', '強姦', '性交', '援交', '毒品', '吸毒',
+  'fuck', 'shit', 'bitch', 'dick', 'pussy', 'cunt', 'nigger', 'nigga', 'porn', 'sex',
+  '官方', '管理員', '客服', 'fervela', 'admin',
+];
+export function nicknameProblem(raw) {
+  const flat = String(raw ?? '').toLowerCase().replace(/[\s\p{P}\p{S}_]/gu, '');
+  return BAD_WORDS.some(w => flat.includes(w)) ? '這個代稱不能用，請換一個（不要用罵人、色情或冒充官方的字）' : null;
+}
 
 // AI 座位用一個假玩家表示，這樣 seatsOf／stateForPlayer／play 全部不用改。
 // 為什麼是「假玩家」而不是另一套分支：房間層對「誰持有這個座位」只認 playerId，
@@ -187,15 +203,23 @@ export function play(room, playerId, from, to) {
 }
 
 // 公開資訊：座位與暱稱。玩家要看得出「右家是哪一位朋友」，所以這一段不經視角過濾。
+// 封鎖用的短代碼：由帳號編號算出 8 碼，同桌與大廳看得到，用來認出「我封鎖過的那個人」。
+// 不是帳號本身，拿它也登入不了；換帳號（刪掉重開）就換一組。
+export const playerTag = (playerId) => {
+  let h = 0x811c9dc5;
+  for (const ch of String(playerId ?? '')) { h ^= ch.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+};
+
 export function publicState(room) {
   const seats = {};
   for (const [seat, pid] of room.seats) {
     const p = room.players.get(pid);
     seats[seat] = { nickname: p.nickname, connected: p.connected, ai: !!p.ai,
-      playsTwoSeats: seatsOf(room, pid).length > 1 };
+      playsTwoSeats: seatsOf(room, pid).length > 1, tag: p.ai ? null : playerTag(pid) };
   }
   return {
-    code: room.code, mode: room.mode, host: room.host, status: room.status,
+    code: room.code, mode: room.mode, host: room.host ? playerTag(room.host) : null, status: room.status,   // 只給短代碼，不外露帳號編號
     seats, setupSeconds: room.setupSeconds, setupDeadline: room.setupDeadline,
     readySeats: [...room.ready].flatMap(pid => seatsOf(room, pid)),
     result: room.game?.result ?? null,

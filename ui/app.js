@@ -1,17 +1,21 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=240';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=240';
-import { localSession } from './session.js?v=240';
-import { remoteSession } from './remote-session.js?v=240';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery } from './account.js?v=240';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=240';
-import { buildGuide } from './guide.js?v=240';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=240';
-import { createBoardView } from './board.js?v=240';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=240';
-import { recordGame, readStats, statsLine } from './tally.js?v=240';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=249';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=249';
+import { nicknameProblem } from '../engine/src/room.mjs?v=249';
+import { PRIVACY_HTML } from './privacy.js?v=249';
+import { TERMS_HTML } from './terms.js?v=249';
+import { nativeShare, haptic } from './native.js?v=249';
+import { localSession } from './session.js?v=249';
+import { remoteSession } from './remote-session.js?v=249';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery, deleteAccount } from './account.js?v=249';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=249';
+import { buildGuide } from './guide.js?v=249';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=249';
+import { createBoardView } from './board.js?v=249';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=249';
+import { recordGame, readStats, statsLine } from './tally.js?v=249';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -24,12 +28,12 @@ const PLAYER_KEY = 'army-online:player';      // 玩家代稱，問過一次就�
 const CURRENT_KEY = 'army-online:current';   // 進行中的棋局，中途中斷也不會遺失        // 保留最近幾局的完整棋譜，供事後分析   // { 名稱: { seat, layout, savedAt } }
 const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'restart', 'mode', 'soundOn', 'home',
   'setupbar', 'setupWho', 'setupTimer', 'setupHint', 'btnRandom', 'btnName', 'btnSave', 'btnLoad', 'btnConfirm', 'btnOtherSeat',
-  'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayCode', 'overlayAgain',
+  'overlay', 'overlayEmblem', 'overlayTitle', 'overlaySub', 'overlayCode', 'overlayAgain', 'overlayShare',
   'modal', 'modalTitle', 'modalBody', 'modalActions', 'useSearch', 'gameCode', 'turnBanner', 'moreBtn', 'moreBox', 'resign', 'guide', 'debugTools', 'modeTools', 'sfx', 'uiVer', 'online']
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=240），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=249），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 // 漏斗套件可能被廣告阻擋；載入失敗也不能擋住遊戲。
 // 套件還沒載入前叫到的步驟先排著，載入後補送；被擋就永遠只是排著，不影響任何畫面。
@@ -37,14 +41,25 @@ const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 const funnelEarly = [];
 const funnel = { step: (s) => { if (funnelEarly.length < 10) funnelEarly.push(s); } };
 const FUNNEL_LOCAL = /^(localhost|127\.|\[::1\])/.test(location.hostname);
-import('./fvs.js?v=240').then(m => {
+import('./fvs.js?v=249').then(m => {
   const F = m.default ?? m.FervelaFunnel;
   F.init({ product: 'army', version: UI_VERSION, platform: 'web',
     endpoint: FUNNEL_LOCAL ? '/__funnel_dev' : 'https://t.fervela.ai/e',
-    allow: ['首次打開', '取好代稱', '進入棋局', '確定佈陣', '第一個成果'] });
+    allow: ['首次打開', '取好代稱', '進入棋局', '確定佈陣', '第一個成果', '按分享', '從分享進來'] });
   funnel.step = (s) => { try { F.step(s); } catch {} };
   funnelEarly.splice(0).forEach(funnel.step);
 }).catch(() => {});
+// 從邀請或分享連結進來的：記一步「從分享進來」，然後把 from 從網址拿掉（房號在 # 後面，不動），
+// 免得他再分享出去時又帶著同一個來源。
+{
+  const q = new URLSearchParams(location.search);
+  if (q.has('from')) {
+    funnel.step('從分享進來');
+    q.delete('from');
+    const rest = q.toString();
+    history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+  }
+}
 // 告訴 index.html 的看門狗：程式已經跑起來了（沒跑起來它會在首頁顯示「載入失敗」的提示）
 window.__armyBooted = true;
 if (els.uiVer) els.uiVer.textContent = `v${UI_VERSION}`;
@@ -180,6 +195,8 @@ function askNickname({ force = false, lead: leadText = null } = {}) {
       body: wrap,
       actions: [{
         label: force ? '改好了' : '開始', primary: true, onClick: () => {
+          const bad = nicknameProblem(input.value);
+          if (bad) { note.textContent = bad; note.classList.add('is-warn'); input.focus(); return; }
           localStorage.setItem(PLAYER_KEY, input.value.trim().slice(0, 12) || '無名氏');
           funnel.step('取好代稱');
           closeModal();
@@ -266,8 +283,41 @@ async function newGame() {
 let online = null;                 // { code } ——非 null 代表這局是連線局
 let myLayoutSeat = null;           // myLayout 現在裝的是哪一家的陣型
 
+// 使用條款（法遵 10/21 定稿，App Store 1.2）：第一次玩多人連線前按一次「同意」，記在本機。
+// 原稿 docs/法遵文字/使用條款.md，顯示用 ui/terms.js，測試逐字比對。
+const TERMS_KEY = 'army-online:terms-v1';
+function agreeTerms() {
+  try { if (localStorage.getItem(TERMS_KEY)) return Promise.resolve(true); } catch { /* 無痕模式：每次都問 */ }
+  return new Promise((resolve) => {
+    const body = document.createElement('div');
+    body.className = 'terms-body';
+    body.innerHTML = TERMS_HTML;
+    showModal({ title: '四國軍棋 使用條款', body, actions: [
+      { label: '不同意', onClick: () => { closeModal(); resolve(false); } },
+      { label: '同意，開始連線', primary: true, onClick: () => {
+        try { localStorage.setItem(TERMS_KEY, String(Date.now())); } catch { /* 無痕模式 */ }
+        closeModal(); resolve(true);
+      } },
+    ] });
+  });
+}
+function openTerms() {
+  const body = document.createElement('div');
+  body.className = 'terms-body';
+  body.innerHTML = TERMS_HTML;
+  showModal({ title: '四國軍棋 使用條款', body, actions: [{ label: '知道了', primary: true, onClick: closeModal }] });
+}
+document.getElementById('ldTerms')?.addEventListener('click', (event) => { event.preventDefault(); openTerms(); });
+
 async function startOnline(code, { seat = null } = {}) {
   clearInterval(ticker);
+  if (!(await agreeTerms())) {
+    // 不同意就不連線：回首頁單機（網址上的房號也拿掉，免得一重整又被問）
+    try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 不影響 */ }
+    lbHide?.(); online = null; newGame();
+    hint('沒有同意使用條款，先跟電腦下一局；想連線時再按「多人連線」');
+    return;
+  }
   // 換一間房就把上一間的錯誤訊息清掉。原本會一路帶過來：
   // 9/29 CEO 在配對大廳的公開桌看到「隊B（左右家）還沒有人」，那句只有「雙人敵對」房會出現，
   // 很可能是之前某一間房留下的，進新房時又被畫出來（10/10 查到）。
@@ -536,7 +586,7 @@ function lbSeat({ pos, who = null, onSit = null, plate = null, meta = '', action
 
 // 下方：（房號大字＋複製邀請連結）、一行說明（有錯誤時換成錯誤）、主按鈕、次按鈕、（規則說明）。
 // 說明那一行永遠佔一行：錯誤出現或消失時，按鈕跟椅子都不會被推動。
-function lbFoot({ room = null, hint = '', error = '', primary = null, secondary = null, links = false }) {
+function lbFoot({ room = null, hint = '', error = '', primary = null, secondary = null, links = false, report = null }) {
   const { mk } = lb;
   const parts = [];
   if (room) parts.push(room);
@@ -552,9 +602,15 @@ function lbFoot({ room = null, hint = '', error = '', primary = null, secondary 
   }
   if (secondary) acts.append(lbButton('btn lb-btn', secondary.label, secondary.onClick));
   parts.push(acts);
+  if (report && !links) {
+    const lk = mk('div', 'lb-links');
+    lk.append(lbButton('lb-link', '檢舉代稱', report));
+    parts.push(lk);
+  }
   if (links) {
     const lk = mk('div', 'lb-links');
     lk.append(lbButton('lb-link', '規則說明', () => openGuide()));
+    if (report) lk.append(lbButton('lb-link', '檢舉代稱', report));
     // 分級標示：首頁有一份完整的；這裡留一個小的，免得從 #lobby 直接進來的人一次都沒看到
     const rate = mk('span', 'lb-rating');
     const img = mk('img');
@@ -585,9 +641,26 @@ function renderLobby(info) {
       } }] });
     return;
   }
+  // 封鎖過的人坐進這一桌（還沒開局）：替他離開，回大廳或首頁。開局後就不打斷，下一桌再擋。
+  const blockedHere = info.status === 'lobby'
+    && SEATS.some(x => info.seats?.[x]?.tag && blockedTags().has(info.seats[x].tag));
+  if (blockedHere) {
+    lobbyOpen = false;
+    lbKickedFrom.add(info.code);
+    // 先讓出座位再斷線：朋友房斷線會替人保留座位，不讓的話桌主那邊會卡著一個空殼
+    for (const seat of info.you?.seats ?? []) try { session?.send?.({ type: 'unseat', seat }); } catch { /* 斷線也無妨 */ }
+    setTimeout(() => { session?.close?.(); }, 300);
+    online = null;
+    showModal({ title: `房間 ${info.code}`, body: textBlock('這一桌有你封鎖的玩家，已經幫你離開。'),
+      actions: [{ label: pub ? '回大廳' : '回首頁', primary: true, onClick: () => {
+        try { history.replaceState(null, '', `${location.pathname}${location.search}${pub ? '#lobby' : ''}`); } catch { /* 不影響 */ }
+        if (pub) openMatchLobby(); else { closeModal(); lbHide(); newGame(); }
+      } }] });
+    return;
+  }
   // 用 # 而不是 ?room=：短、好念、好打，而且靜態站不需要任何路由設定就吃得下。
   // Lynch：「我希望網址精簡一點，譬如不要有 ?room 這樣太難打字。」
-  const link = `${location.origin}${location.pathname}#${info.code}`;
+  const link = `${location.origin}${location.pathname}?from=invite#${info.code}`;   // from：只分來源，不帶人
 
   // 座位照棋盤的相對位置擺在四張椅子上。已經入座的人：自己一定在下方，其餘照行棋順序
   // 逆時針擺（右、對面、左）——那正是開局後畫面會呈現的樣子。還沒入座的人：以 1 號位為基準。
@@ -599,9 +672,14 @@ function renderLobby(info) {
     const who = info.seats?.[seat];
     const isMine = mine.includes(seat);
     // 隊別用「隊友／敵方」講，比「隊A／隊B」直覺——但沒入座時還沒有「你」，那就照實寫成 A／B 兩隊。
+    // 還沒坐下：有人先坐了（多半是邀請你的朋友），空椅子就直接講「跟他同隊／對手」，
+    // 被邀請的人一眼找得到隊友位（產品長 10/21 建議）。沒人坐才照實寫 A／B 隊。
+    const firstHuman = SEATS.find(x => info.seats?.[x] && !info.seats[x].ai);
     const team = mine.length
       ? (TEAM_OF(seat) === TEAM_OF(base) ? (isMine ? '' : '隊友') : '敵方')
-      : (TEAM_OF(seat) === 0 ? 'A 隊' : 'B 隊');
+      : firstHuman != null && !who
+        ? (TEAM_OF(seat) === TEAM_OF(firstHuman) ? `${info.seats[firstHuman].nickname}的隊友` : `${info.seats[firstHuman].nickname}的對手`)
+        : (TEAM_OF(seat) === 0 ? 'A 隊' : 'B 隊');
     if (!who) {
       return lbSeat({ pos, meta: team,
         onSit: mine.length ? null : () => { lobbyError = ''; session.send({ type: 'seat', seat }); } });
@@ -640,6 +718,8 @@ function renderLobby(info) {
     box.append(lb.mk('span', 'lb-room-k', '房號'), lb.mk('b', '', info.code));
     const copy = lbButton('btn lb-copy', '邀請朋友');
     copy.addEventListener('click', async () => {
+      funnel.step('按分享');
+      if (nativeShare({ title: '四國軍棋', text: '來跟我下一局四國軍棋：點連結直接坐下，不用下載、不用註冊', url: link })) return;
       if (navigator.share) {
         try {
           await navigator.share({
@@ -683,8 +763,76 @@ function renderLobby(info) {
   lbHead({ label: pub ? '配對大廳' : `房間 ${info.code}`, title: mine.length ? '等人到齊' : '選個位置坐下',
     pill, onRename: renameMe });
   lb.scene.replaceChildren(...seatEls);
-  lbFoot({ room, hint, error: lobbyError, primary, secondary });
+  // 檢舉代稱（法遵 10/21、App Store：公開給陌生人看的文字要能檢舉）：只列同桌其他真人
+  const others = othersInRoom(info, mine);
+  lbFoot({ room, hint, error: lobbyError, primary, secondary,
+    report: others.length ? () => openReportNickname(others, info.code) : null });
   lb.fit();
+}
+
+// 同桌其他真人（給檢舉／封鎖用）：同一個人控兩家只列一次
+function othersInRoom(info, mine = info.you?.seats ?? []) {
+  const seen = new Map();
+  for (const x of SEATS) {
+    const p = info.seats?.[x];
+    if (!p || p.ai || mine.includes(x) || !p.tag) continue;
+    if (!seen.has(p.tag)) seen.set(p.tag, { name: p.nickname, tag: p.tag });
+  }
+  return [...seen.values()];
+}
+
+// 封鎖（App Store 1.2，法遵 10/21）：只存在這台裝置，記對方的短代碼、不記代稱。
+const BLOCK_KEY = 'army-online:blocked';
+const blockedTags = () => { try { return new Set(JSON.parse(localStorage.getItem(BLOCK_KEY) ?? '[]')); } catch { return new Set(); } };
+const blockTag = (tag) => {
+  const all = blockedTags(); all.add(tag);
+  try { localStorage.setItem(BLOCK_KEY, JSON.stringify([...all].slice(-200))); } catch { /* 無痕模式 */ }
+};
+
+// 檢舉代稱：送到伺服器存 90 天，有人看過就處理（改成無名氏或刪帳號）。
+// 不送檢舉人的帳號，只送房號與被檢舉的代稱。封鎖只在本機。
+function openReportNickname(players, code) {
+  const wrap = document.createElement('div');
+  const p = (t) => { const e = document.createElement('p'); e.textContent = t; return e; };
+  const msg = document.createElement('div');
+  msg.className = 'modal-empty';
+  wrap.append(p('代稱不恰當（罵人、色情、冒充官方、用了別人的真名），或不想再跟某人同桌？檢舉不會讓對方知道是誰；封鎖之後，他坐進你的桌子你會自動離開，大廳也不會再排他的桌子給你。'));
+  for (const who of players) {
+    const row = document.createElement('div');
+    row.className = 'report-row';
+    const rep = document.createElement('button');
+    rep.className = 'btn';
+    rep.textContent = `檢舉「${who.name}」`;
+    rep.addEventListener('click', async () => {
+      rep.disabled = true;
+      try {
+        const acc = await ensureAccount();
+        const res = await fetch(`${GAME_ENDPOINT}/report`, { method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${acc.token}` },
+          body: JSON.stringify({ code, nickname: who.name }) });
+        if (!res.ok) throw new Error(String(res.status));
+        msg.textContent = '已送出，謝謝你。不想跟他同桌，可以按「封鎖」或「離開」。';
+      } catch {
+        rep.disabled = false;
+        msg.textContent = '沒有送出（可能是網路斷了）。請再試一次，或寫信到 contact@fervela.ai 附上房號和代稱。';
+      }
+    });
+    const blk = document.createElement('button');
+    blk.className = 'btn btn--danger';
+    blk.textContent = blockedTags().has(who.tag) ? '已封鎖' : '封鎖';
+    blk.disabled = blockedTags().has(who.tag);
+    blk.addEventListener('click', () => {
+      blockTag(who.tag);
+      blk.textContent = '已封鎖'; blk.disabled = true;
+      msg.textContent = `已封鎖「${who.name}」。還沒開局就會幫你離開這一桌；已經開局的話，這一局照常下完。之後不會再跟他同桌。`;
+      // 還在等人：馬上照封鎖名單重畫一次，該離開就離開
+      if (lobbyOpen && session?.roomInfo) setTimeout(() => { if (lobbyOpen) renderLobby(session.roomInfo()); }, 900);
+    });
+    row.append(rep, blk);
+    wrap.append(row);
+  }
+  wrap.append(msg);
+  showModal({ title: '檢舉或封鎖', body: wrap, actions: [{ label: '關閉', primary: true, onClick: closeModal }] });
 }
 
 function startTicker() {
@@ -851,9 +999,11 @@ async function doMove(seat, from, to) {
   // 走的過程放鐵軌聲；**輸贏的聲音要等碰到才播**。
   // 原本兩種都在動畫開始前一起播，等於棋子還沒走到就先知道結果了（Lynch 指出這是最嚴重的問題）。
   SFX.move(path.length - 1, view.STEP_MS);
+  haptic('light');
   myAnim = view.animateMove({ from, to, seat, outcome: move.outcome, piece, path });
   await myAnim;
   (SFX_BY_OUTCOME[move.outcome] ?? null)?.();
+  if (move.outcome !== 'moved') haptic('heavy');
 
   lastMove = { from, to, seat, path };                       // 留下痕跡，讓大家看清楚誰動了什麼
   // 你自己出手＝把上一輪的痕跡清掉，重新累積這一輪其他家的走法
@@ -1153,14 +1303,34 @@ function showResult() {
   els.overlaySub.textContent = draw
     ? (r.reason === 'noCapture' ? '連續 60 步沒有吃子，判和' : '四家都無步可走，判和')
     : r.reason === 'resign'
-      ? `你認輸離開　共 ${S.plies} 步（棋譜已保留）`
-      : `${win ? '你和對家' : '左右兩家'}拿下了對方兩面軍旗　共 ${S.plies} 步`;
+      ? `你認輸離開${S.plies ? `　共 ${S.plies} 步` : ''}（棋譜已保留）`
+      : `${win ? '你和對家' : '左右兩家'}拿下了對方兩面軍旗${S.plies ? `　共 ${S.plies} 步` : ''}`;
   els.overlayCode.textContent = gameCode ? `局名 ${gameCode}` : '';
+  // 自然推廣（決策紀錄第 1047 行）：贏的那一刻最想講，給一顆「找朋友來」。
+  // 只在贏的時候出現、不自己跳、不擋「再玩一局」。分享內容不帶代稱與棋步。
+  els.overlayShare.hidden = !win;
+  els.overlayShare.dataset.plies = String(S.plies);
   els.overlay.hidden = false;
   (draw ? SFX.flag : (win ? SFX.victory : SFX.defeat))();
   showStats();
 }
 els.overlayAgain.addEventListener('click', () => { els.overlay.hidden = true; newGame(); });
+els.overlayShare.addEventListener('click', async () => {
+  funnel.step('按分享');
+  // win.html 只換 LINE／FB 預覽圖成「我贏了」卡，打開就轉回 ./?from=share。
+  const url = new URL('win.html', location.href).href;
+  const plies = Number(els.overlayShare.dataset.plies) || 0;
+  const text = `我剛在四國軍棋贏了一局${plies ? `（${plies} 步）` : ''}。`
+    + '不用下載、不用註冊，點開就能玩，來跟我一隊：';
+  if (nativeShare({ title: '四國軍棋', text, url })) return;
+  if (navigator.share) {
+    try { await navigator.share({ title: '四國軍棋', text, url }); return; }
+    catch (e) { if (e?.name === 'AbortError') return; }
+  }
+  navigator.clipboard?.writeText(`${text}${url}`);
+  els.overlayShare.textContent = '已複製，貼給朋友 ✓';
+  setTimeout(() => { els.overlayShare.textContent = '找朋友來下一局'; }, 1800);
+});
 
 // 對戰統計：結束後附在結果畫面下方。
 // Lynch 要的三項：殘子（1/2/3）、出兵勝率、炸彈換到 1/2 的獎勵。
@@ -1201,7 +1371,7 @@ async function showStats() {
   ul.append(
     row('出兵勝率', st.winRate == null ? '—' : `${Math.round(st.winRate * 100)}%`,
       st.attacks ? `出手 ${st.attacks}　吃掉 ${st.won}　同歸於盡 ${st.traded}（算贏，不虧）　陣亡 ${st.lost}` : '這局沒有出手'),
-    row('總手數', String(st.plies)),
+    ...(st.plies ? [row('總手數', String(st.plies))] : []),
   );
   if (st.bombBonus) {
     ul.append(row('炸彈獎勵', `＋${st.bombBonus}`, `炸掉${st.bombKills.join('、')}——全場最划算的一擊`));
@@ -1622,7 +1792,8 @@ function openMatchLobby() {
     await startOnline(code, { seat });
   };
   const seated = (t) => t.seats.filter(Boolean).length;
-  const hasRoom = (t) => t.status === 'waiting' && t.seats.some(s => !s) && !lbKickedFrom.has(t.code);
+  const hasRoom = (t) => t.status === 'waiting' && t.seats.some(s => !s) && !lbKickedFrom.has(t.code)
+    && !(t.tags ?? []).some(g => g && blockedTags().has(g));    // 坐著我封鎖的人的桌子不排給我
   const pickTable = () => {
     const open = (tables ?? []).filter(hasRoom);
     let tb = open.find(t => t.code === pickCode);
@@ -1718,6 +1889,10 @@ function openOnlineMenu(prefill = '') {
     b.className = 'btn online-choice';
     b.innerHTML = `<b>${m.label}</b><span>${m.desc}</span>`;
     b.addEventListener('click', async () => {
+      // 條款要在開房「之前」問：朋友房只活在伺服器記憶體，開好房沒人連進去，幾秒就被收掉
+      // （10/21 驗收踩到：讀條款的十幾秒裡房間就沒了，按同意後「連不上這間房」）
+      closeModal();
+      if (!(await agreeTerms())) return;
       b.disabled = true;
       b.querySelector('b').textContent = '開房中…';
       try {
@@ -1950,26 +2125,88 @@ if (ldVer) ldVer.textContent = `v${UI_VERSION}`;
 document.getElementById('ldPrivacy')?.addEventListener('click', (event) => {
   event.preventDefault();
   const body = document.createElement('div');
-  body.innerHTML = `
-    <p>四國軍棋不用註冊，也不用填任何個人資料。下面是會離開你裝置的資料。</p>
-    <p><strong>一、匿名帳號</strong>：第一次進站時，會自動幫你開一個匿名帳號（一串隨機編號），讓你的對局和戰績接得起來，換手機時可以用「還原碼」接回。我們只存這串編號、建立時間和還原碼的加密值，不知道你是誰。匿名帳號目前會一直保留（見最後「想刪掉資料」）。</p>
-    <p><strong>二、線上對戰</strong>：在配對大廳或朋友房下棋時，你的代稱、座位和棋步會經過我們的伺服器傳給同桌玩家；公開大廳裡的代稱，所有進站的人都看得到。<strong>請不要用真名或別人認得出的名字當代稱。</strong></p>
-    <p><strong>三、對局紀錄</strong>：一局下完（或中途離開）時，會把這局的棋步、勝負、房號、代稱，以及你的瀏覽器類型（用來分辨手機或電腦）送到我們的伺服器，用來讓電腦對手下得更好。不含信箱、電話、位置，也不存你的連線位址（IP）。對局紀錄 180 天後自動刪除。</p>
-    <p><strong>四、網站人次</strong>：用 Cloudflare 網站分析算有多少人來過，不用 Cookie，不記你是誰。</p>
-    <p><strong>五、匿名使用統計</strong>：為了知道大家玩到哪一步就離開、哪裡需要改，四國軍棋會在你<strong>第一次</strong>走到幾個固定步驟時（例如第一次打開、第一次下完一局），送出一則匿名紀錄給我們。每一步、每台裝置只送一次。</p>
-    <ul>
-      <li><strong>只送</strong>：產品名稱、版本、平台（網頁）、步驟名稱、日期（只到哪一天），以及距離第一次打開大約多久（只分「1 分鐘內」「1 小時內」這類區間）。</li>
-      <li><strong>不送</strong>：你的代稱、棋步、房號、帳號、姓名、信箱、電話、位置、裝置或廣告編號。我們不會把這些紀錄對到任何人，也不會跟對局紀錄合併。</li>
-      <li><strong>傳送時</strong>：資料送到 t.fervela.ai（主機由 Cloudflare 提供，Cloudflare 是美國公司）。傳送時網路會帶出你的連線位址（IP），我們不儲存它。</li>
-      <li><strong>保存</strong>：原始紀錄 90 天內自動刪除，之後只留每天的總數。</li>
-      <li><strong>能不能關</strong>：目前不能單獨關閉；開著廣告阻擋時多半不會送出，遊戲照常可玩。</li>
-    </ul>
-    <p>這是 v240 起新增的；之前的版本不會送出。</p>
-    <p><strong>想刪掉資料</strong>：寫信到 contact@fervela.ai，附上你的代稱和大約的對局時間，我們會刪掉你的對局紀錄。匿名帳號只有一串隨機編號和建立時間，我們對不到是誰的；之後的版本會在「⋯」裡加「刪除我的帳號」讓你自己刪。</p>
-    <p>有問題請寫信到 contact@fervela.ai。</p>`;
+  body.innerHTML = PRIVACY_HTML;
   showModal({ title: '隱私說明', body,
     actions: [{ label: '知道了', primary: true, onClick: closeModal }] });
 });
+
+// 我的帳號：看還原碼、用還原碼接回、刪除帳號（App Store 規定 App 內要能自己刪）。
+// 首頁頁尾與「⋯」都進得來。帳號只在第一次玩多人連線時才會建立。
+function openAccount() {
+  const acc = currentAccount();
+  const wrap = document.createElement('div');
+  const p = (t) => { const e = document.createElement('p'); e.textContent = t; return e; };
+  if (acc?.token) {
+    wrap.append(p('你的匿名帳號是第一次玩多人連線時自動開的，沒有名字、信箱或密碼。'));
+    if (acc.recovery) {
+      wrap.append(p('換手機時，在新手機打開這裡、輸入下面這組還原碼，就能接回同一個帳號。請抄下來，不要給別人看。'));
+      const box = document.createElement('div');
+      box.className = 'report-code';
+      box.textContent = acc.recovery;
+      wrap.append(box);
+    } else {
+      wrap.append(p('這台裝置沒有存還原碼，換手機時接不回來；不影響在這台裝置上玩。'));
+    }
+  } else {
+    wrap.append(p('你還沒有線上帳號：只有第一次玩多人連線時才會自動開一個。'));
+  }
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '從舊手機接回：輸入還原碼';
+  input.autocomplete = 'off';
+  const msg = document.createElement('div');
+  msg.className = 'modal-empty';
+  wrap.append(input, msg);
+  const actions = [
+    { label: '接回', onClick: async () => {
+      if (!input.value.trim()) { msg.textContent = '先輸入還原碼'; return; }
+      msg.textContent = '接回中…';
+      try { await redeem(input.value.trim()); msg.textContent = '已接回舊帳號 ✓'; }
+      catch (e) { msg.textContent = `${e.message}，請檢查有沒有抄錯`; }
+    } },
+  ];
+  actions.push({ label: '刪除我的帳號', danger: true, onClick: confirmDeleteAccount });
+  actions.push({ label: '關閉', primary: true, onClick: closeModal });
+  showModal({ title: '我的帳號', body: wrap, actions });
+}
+function confirmDeleteAccount() {
+  const d = document.createElement('div');
+  d.className = 'modal-note';
+  d.textContent = '刪除後：伺服器上的匿名帳號和還原碼會刪掉、還原碼從此不能用；'
+    + '這台裝置上的代稱、戰績、陣型、勳章也會清掉。這個動作不能復原。'
+    + '之後再玩多人連線，會自動開一個全新的帳號。'
+    + '（已上傳的對局紀錄沒有掛帳號，要刪請寫信到 contact@fervela.ai。）';
+  const msg = document.createElement('div');
+  msg.className = 'modal-empty';
+  const body = document.createElement('div');
+  body.append(d, msg);
+  showModal({ title: '確定刪除我的帳號？', body, actions: [
+    { label: '先不要', onClick: openAccount },
+    { label: '確定刪除', danger: true, primary: true, onClick: async () => {
+      msg.textContent = '刪除中…';
+      try {
+        await deleteAccount();
+        const done = document.createElement('div');
+        done.className = 'modal-note';
+        done.textContent = '帳號已刪除。這台裝置上的資料也清掉了。';
+        showModal({ title: '已刪除', body: done, actions: [
+          { label: '回首頁', primary: true, onClick: () => { location.href = location.pathname; } },
+        ] });
+      } catch (e) {
+        msg.textContent = `沒有刪成功：${e.message}。請確認有連上網路再試一次；資料都還在。`;
+      }
+    } },
+  ] });
+}
+document.getElementById('reportBtn')?.addEventListener('click', () => {
+  els.moreBox?.classList.remove('is-open');
+  const info = online && session?.roomInfo ? session.roomInfo() : null;
+  const others = info ? othersInRoom(info) : [];
+  if (!others.length) { hint('這一局沒有其他真人玩家'); return; }
+  openReportNickname(others, info.code);
+});
+document.getElementById('accountBtn')?.addEventListener('click', () => { els.moreBox?.classList.remove('is-open'); openAccount(); });
+document.getElementById('ldAccount')?.addEventListener('click', (event) => { event.preventDefault(); openAccount(); });
 
 // 代稱：顯示在首頁，點一下就能改（Lynch：「要有可以改名的位置」）。
 // 放在首頁而不是對局畫面——改名是開局前的事，對局中改會讓棋譜裡同一局出現兩個名字。
@@ -2004,7 +2241,9 @@ if (joinCode.toLowerCase() === 'lobby') {
   askNickname({ lead: '四人兩隊的暗棋，跟線上的人湊一桌。取個代稱，大家在大廳就看得到你。' }).then(() => openMatchLobby());
 } else if (joinCode) {
   hideLanding();
-  askNickname().then(() => startOnline(joinCode.toUpperCase()));   // 舊的英數房號要轉大寫，純數字不受影響
+  // 點朋友的邀請連結進來的：開場白要講「朋友在等你」，不是「打三家電腦」（10/21 走截圖串時看出來）
+  askNickname({ lead: '朋友邀你一起下四國軍棋（四人兩隊的暗棋）。取個代稱，就進他的房間坐下。' })
+    .then(() => startOnline(joinCode.toUpperCase()));   // 舊的英數房號要轉大寫，純數字不受影響
 } else {
   if (landing) landing.hidden = false;
 }

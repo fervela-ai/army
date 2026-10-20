@@ -16,7 +16,7 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="stylesheet" href="theme.css?v=240">
+<link rel="stylesheet" href="theme.css?v=249">
 <!-- 網站人次（T010，營運長 10/15）：Cloudflare 網站分析，不用 Cookie、不送網址參數；寫法照營運長給的一字不差 -->
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"433e064bb2644552aaedad8b05834a93","spa":false}'></script>
 </head>
@@ -90,15 +90,15 @@
     <div class="landing-cards">
       <!-- 卡片的 id 與點擊行為不要動（app.js 綁的是 id）；只換長相與圖示 -->
       <button class="landing-card landing-card--main" id="ldSolo">
-        <img class="landing-card-icon" src="img/home/icon-start.webp?v=240" width="96" height="96" alt="">
+        <img class="landing-card-icon" src="img/home/icon-start.webp?v=249" width="96" height="96" alt="">
         <span><b>開始遊戲</b><small>和電腦隊友一隊，對抗兩家電腦</small></span>
       </button>
       <button class="landing-card" id="ldOnline">
-        <img class="landing-card-icon" src="img/home/icon-online.webp?v=240" width="96" height="96" alt="">
+        <img class="landing-card-icon" src="img/home/icon-online.webp?v=249" width="96" height="96" alt="">
         <span><b>多人連線</b><small>邀請好友 · 雙人合作 / 雙人敵對 / 四人局</small></span>
       </button>
       <button class="landing-card" id="ldGuide">
-        <img class="landing-card-icon" src="img/home/icon-guide.webp?v=240" width="96" height="96" alt="">
+        <img class="landing-card-icon" src="img/home/icon-guide.webp?v=249" width="96" height="96" alt="">
         <span><b>新手指南</b><small>沒玩過？三分鐘看懂怎麼玩</small></span>
       </button>
     </div>
@@ -111,7 +111,7 @@
         <img src="rating-general.png" width="48" height="48" alt="普遍級">
         <span>普遍級，任何年齡皆可玩。請注意使用時間，避免沉迷。<br>本遊戲不得用於賭博或從事違法行為。</span>
       </div>
-      <p class="landing-foot landing-op"><a href="#" id="ldPrivacy">隱私說明</a>　營運：Fervela.ai　<a href="mailto:contact@fervela.ai">contact@fervela.ai</a>　<span id="ldVer"></span></p>
+      <p class="landing-foot landing-op"><a href="#" id="ldPrivacy">隱私說明</a>　<a href="#" id="ldAccount">我的帳號</a>　<a href="#" id="ldTerms">使用條款</a>　營運：Fervela.ai　<a href="mailto:contact@fervela.ai">contact@fervela.ai</a>　<span id="ldVer"></span></p>
     </div>
   </div>
 </div>
@@ -176,6 +176,8 @@
         <button class="btn" id="resign">認輸離開</button>
         <label class="toggle"><input type="checkbox" id="soundOn" checked> 音效</label>
         <button class="btn" id="restart">重新開局</button>
+        <button class="btn" id="accountBtn">我的帳號</button>
+        <button class="btn" id="reportBtn">檢舉代稱</button>
       </div>
     </div>
   </header>
@@ -220,6 +222,7 @@
            （Lynch：「勝利畫面希望也要秀出這局的名稱」）。 -->
       <p class="overlay-code" id="overlayCode"></p>
       <button class="btn btn--primary overlay-btn" id="overlayAgain">再玩一局</button>
+      <button class="btn overlay-btn" id="overlayShare" hidden>找朋友來下一局</button>
     </div>
   </div>
 
@@ -240,6 +243,6 @@
     </div>
   </aside>
 </div>
-<script type="module" src="app.js?v=240"></script>
+<script type="module" src="app.js?v=249"></script>
 </body>
 </html>

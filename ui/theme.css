@@ -419,6 +419,9 @@ body {
 .saved-row .btn { padding: 4px 10px; font-size: 13px; }
 .saved-row .spacer { margin-left: auto; }
 .modal-empty { color: var(--ink-soft); font-size: 14px; padding: 8px 2px; }
+.modal-note.is-warn { color: var(--camp-stroke); font-weight: 600; }
+.report-row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.terms-body ol { padding-left: 1.4em; } .terms-body li { margin: 6px 0; }
 .btn--danger { color: var(--camp-stroke); border-color: var(--camp-stroke); }
 
 /* 走法提示的顏色＝看棋的人自己的隊色 */

@@ -7,7 +7,7 @@
 //
 // 換裝置靠「還原碼」：一組抄得下來的短碼，在新裝置貼上就接續同一個帳號。
 // **只有在玩家已經有東西可失去的時候才提出**——那時他才有動機去抄。
-import { GAME_ENDPOINT } from './config.js?v=240';
+import { GAME_ENDPOINT } from './config.js?v=249';
 
 const KEY = 'army-online:account';
 
@@ -49,7 +49,8 @@ export const currentAccount = () => load();
 // 在新裝置貼上還原碼，接續同一個帳號
 export async function redeem(code) {
   const data = await post('/auth/redeem', { code });
-  const acc = { userId: data.userId, token: data.token, recovery: null };
+  // 記下這組碼：之後在「我的帳號」看得到，刪帳號時也靠它把伺服器上的雜湊一起刪掉。
+  const acc = { userId: data.userId, token: data.token, recovery: code };
   save(acc);
   return acc;
 }
@@ -75,4 +76,15 @@ export async function createRoom({ mode = 'four', fill = 'mate' } = {}) {
 // 只清本機——伺服器上的舊帳號還在，還原碼還救得回來，所以這不是不可逆的刪除。
 export function forgetLocalAccount() {
   try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+}
+
+// 刪除我的帳號（App Store 規定 App 內要能自己刪）：伺服器刪帳號與還原碼，
+// 本機刪掉這個遊戲存的所有東西（帳號、代稱、戰績、陣型、勳章）。不能復原。
+// 伺服器失敗就丟錯，本機不動——不然畫面說刪了、伺服器其實還在。
+export async function deleteAccount() {
+  const acc = load();
+  if (acc?.token) await post('/auth/delete', { recovery: acc.recovery ?? null }, acc.token);
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('army-online:') || k.startsWith('ffunnel:army:')) localStorage.removeItem(k);
+  } catch { /* 無痕模式 */ }
 }

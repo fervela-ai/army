@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 贏了按「找朋友來下一局」傳出去的網址。只為了讓 LINE、FB 預覽出「我贏了」那張卡
+     （首頁的 og:image 是邀請卡「三缺一」）；打開就直接進遊戲，帶 from=share 給使用漏斗算來源。 -->
+<title>我贏了一局四國軍棋，換你來挑戰</title>
+<meta name="description" content="四個人，兩兩一隊。對家是你的隊友，但你看不到他的棋子。打開就能玩，不用下載、不用註冊。">
+<link rel="canonical" href="https://army.fervela.ai/ui/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://army.fervela.ai/ui/win.html">
+<meta property="og:title" content="我贏了一局四國軍棋，換你來挑戰">
+<meta property="og:description" content="四個人，兩兩一隊。對家是你的隊友，但你看不到他的棋子。打開就能玩，不用下載、不用註冊。">
+<meta property="og:image" content="https://army.fervela.ai/ui/img/share/win-v1.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="robots" content="noindex">
+<script>location.replace('./?from=share' + location.hash)</script>
+<meta http-equiv="refresh" content="0; url=./?from=share">
+</head>
+<body style="background:#f3e7d3;color:#3a2a1a;font-family:system-ui,sans-serif;text-align:center;padding:40px 16px">
+<p>載入中…　<a href="./?from=share" style="color:#8a4a2a">如果沒有自動進入，點這裡</a></p>
+</body>
+</html>

@@ -8,12 +8,12 @@
 //   remoteSession：伺服器說了算，這裡只是把動作送出去、把推回來的狀態存起來。
 // 所以這裡不做任何「先假裝走了」的樂觀更新——暗棋一旦前後端狀態不一致，
 // 玩家會看到自己的棋子跳回去，比慢半秒難受得多。
-import { SEATS } from '../engine/src/board.mjs?v=240';
-import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=240';
-import { GAME_WS } from './config.js?v=240';
-import { ensureAccount } from './account.js?v=240';
-import { gameStats } from '../engine/src/game-tally.mjs?v=240';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=240';
+import { SEATS } from '../engine/src/board.mjs?v=249';
+import { legalMoves as calcLegalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=249';
+import { GAME_WS } from './config.js?v=249';
+import { ensureAccount } from './account.js?v=249';
+import { gameStats } from '../engine/src/game-tally.mjs?v=249';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=249';
 
 // 伺服器沒告訴我這一手的結果時，從前後盤面推回來：
 // 終點現在是我的棋＝走過去了（原本有敵人就是吃掉了）、空的＝同歸於盡、還是敵人＝我死了。
@@ -25,7 +25,7 @@ function outcomeFromBoards(before, after, seat, to) {
   return 'attackerDead';
 }
 
-export async function remoteSession({ code, nickname, onState, onError } = {}) {
+export async function remoteSession({ code, nickname, onState, onError, onHistory } = {}) {
   const acc = await ensureAccount();
   let state = null;                  // 伺服器推來的最新狀態
   let prev = null;                   // 上一則狀態（播動畫時畫的是這一個）

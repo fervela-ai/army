@@ -1,21 +1,22 @@
 // 本機測試版。預設「單人（三家電腦）」：你坐下家，其餘三家由 AI 操作。
 // 也可以切成熱座四人（四個人輪流用同一台電腦），那時走完會等你按「換手」才轉視角——
 // 立刻轉視角會讓人看不到自己剛剛走了什麼。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=249';
-import { randomLayout } from '../engine/src/random-layout.mjs?v=249';
-import { nicknameProblem } from '../engine/src/room.mjs?v=249';
-import { PRIVACY_HTML } from './privacy.js?v=249';
-import { TERMS_HTML } from './terms.js?v=249';
-import { nativeShare, haptic } from './native.js?v=249';
-import { localSession } from './session.js?v=249';
-import { remoteSession } from './remote-session.js?v=249';
-import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery, deleteAccount } from './account.js?v=249';
-import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=249';
-import { buildGuide } from './guide.js?v=249';
-import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=249';
-import { createBoardView } from './board.js?v=249';
-import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=249';
-import { recordGame, readStats, statsLine } from './tally.js?v=249';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=250';
+import { randomLayout } from '../engine/src/random-layout.mjs?v=250';
+import { nicknameProblem } from '../engine/src/room.mjs?v=250';
+import { PRIVACY_HTML } from './privacy.js?v=250';
+import { TERMS_HTML } from './terms.js?v=250';
+import { nativeShare, haptic } from './native.js?v=250';
+import { shareEntry } from './share-source.js?v=250';
+import { localSession } from './session.js?v=250';
+import { remoteSession } from './remote-session.js?v=250';
+import { createRoom, ensureAccount, currentAccount, redeem, rotateRecovery, deleteAccount } from './account.js?v=250';
+import { RECORD_ENDPOINT, GAME_ENDPOINT, AI_VERSION } from './config.js?v=250';
+import { buildGuide } from './guide.js?v=250';
+import { checkAchievements, ACHIEVEMENTS, unlockedIds, titleFor, noteGame } from './achievements.js?v=250';
+import { createBoardView } from './board.js?v=250';
+import { SFX, setEnabled, VARIANTS, getChoice, setVariant, preview } from './sound.js?v=250';
+import { recordGame, readStats, statsLine } from './tally.js?v=250';
 
 // 座位名稱隨模式而變：合作模式的對家是「夥伴」，敵對模式的對家可能是「你自己的另一家」。
 // 名字錯了，玩家會看不懂戰報在講誰。
@@ -33,7 +34,7 @@ const els = Object.fromEntries(['board', 'turn', 'seats', 'log', 'revealAll', 'r
   .map(id => [id, document.getElementById(id)]));
 
 // 版本號顯示在標題旁邊：Lynch「V123 我想要標示在某處，這樣方便我看」。
-// 值從自己的 import URL 取（?v=249），bump-ui-version.sh 一改就跟著動，不會忘記同步。
+// 值從自己的 import URL 取（?v=250），bump-ui-version.sh 一改就跟著動，不會忘記同步。
 const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 // 漏斗套件可能被廣告阻擋；載入失敗也不能擋住遊戲。
 // 套件還沒載入前叫到的步驟先排著，載入後補送；被擋就永遠只是排著，不影響任何畫面。
@@ -41,10 +42,15 @@ const UI_VERSION = new URL(import.meta.url).searchParams.get('v') ?? '?';
 const funnelEarly = [];
 const funnel = { step: (s) => { if (funnelEarly.length < 10) funnelEarly.push(s); } };
 const FUNNEL_LOCAL = /^(localhost|127\.|\[::1\])/.test(location.hostname);
-import('./fvs.js?v=249').then(m => {
+import('./fvs.js?v=250').then(m => {
   const F = m.default ?? m.FervelaFunnel;
-  F.init({ product: 'army', version: UI_VERSION, platform: 'web',
+  // 收集端只收 X.Y 版號（每段最多 2 位），三位數的 249 會被整批退回（v240～v249 漏斗全被丟，10/21 查到）。
+  // 所以送「百位.後兩位」：249 → 2.49、250 → 2.50。
+  const n = Number(UI_VERSION);
+  const funnelVersion = Number.isInteger(n) ? `${Math.floor(n / 100)}.${String(n % 100).padStart(2, '0')}` : '0.0';
+  F.init({ product: 'army', version: funnelVersion, platform: 'web',
     endpoint: FUNNEL_LOCAL ? '/__funnel_dev' : 'https://t.fervela.ai/e',
+    // 「按分享」「從分享進來」：法遵 10/21 核過隱私說明句，條件是只送固定步驟名（測試 server/test/funnel-share.test.mjs）。
     allow: ['首次打開', '取好代稱', '進入棋局', '確定佈陣', '第一個成果', '按分享', '從分享進來'] });
   funnel.step = (s) => { try { F.step(s); } catch {} };
   funnelEarly.splice(0).forEach(funnel.step);
@@ -52,11 +58,9 @@ import('./fvs.js?v=249').then(m => {
 // 從邀請或分享連結進來的：記一步「從分享進來」，然後把 from 從網址拿掉（房號在 # 後面，不動），
 // 免得他再分享出去時又帶著同一個來源。
 {
-  const q = new URLSearchParams(location.search);
-  if (q.has('from')) {
-    funnel.step('從分享進來');
-    q.delete('from');
-    const rest = q.toString();
+  const { step, rest } = shareEntry(location.search);
+  if (step) {
+    funnel.step('從分享進來');   // 固定字（privacy-text 測試會擋非字面值）；shareEntry 只決定要不要送
     history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
   }
 }

@@ -11,7 +11,7 @@
 //   moves ：完整棋譜，每一步 { seat, from, to, piece, victim, outcome, ply }。
 import { SEATS, TEAM_OF } from './board.mjs';
 
-export function gameStats({ pieces = [], moves = [], seat = 0, plies = 0 } = {}) {
+export function gameStats({ pieces = [], moves = [], seat = 0, plies = 0, outAt = {} } = {}) {
   const team = TEAM_OF(seat);
   const alive = { mine: { 司令: 0, 軍長: 0, 師長: 0 }, foe: { 司令: 0, 軍長: 0, 師長: 0 } };
   // 每一家分開算（Lynch 要的表格：縱軸四家、橫軸 1／2／3／炸彈）
@@ -22,10 +22,12 @@ export function gameStats({ pieces = [], moves = [], seat = 0, plies = 0 } = {})
       if (o.piece in alive[side]) alive[side][o.piece]++;
       if (o.piece in bySeat[o.seat]) bySeat[o.seat][o.piece]++;
     }
+    // 已出局的家：盤上的棋子在被扛旗時就清光了，改用出局當下的快照（顯示「被扛旗前」的實力）
+    for (const s of Object.keys(outAt)) if (outAt[s]) bySeat[Number(s)] = { ...outAt[s] };
   }
   // 出兵勝率：我方主動發起的攻擊裡，吃掉對方的比例
   let attacks = 0, won = 0, traded = 0, lost = 0, bombBonus = 0;
-  const bombKills = [];
+  const bombKills = [], bombKillers = [];
   for (const m of moves) {
     if (TEAM_OF(m.seat) !== team) continue;
     if (m.outcome === 'moved') continue;          // 沒碰到人，不算出兵
@@ -35,7 +37,7 @@ export function gameStats({ pieces = [], moves = [], seat = 0, plies = 0 } = {})
     else lost++;
     // 炸彈換到司令或軍長＝最高價值的一擊
     if (m.piece === '炸彈' && m.outcome === 'bothDead' && m.victim) {
-      if (m.victim === '司令' || m.victim === '軍長') { bombBonus++; bombKills.push(m.victim); }
+      if (m.victim === '司令' || m.victim === '軍長') { bombBonus++; bombKills.push(m.victim); bombKillers.push(m.seat); }
     }
   }
   // 給成就用的細項
@@ -61,7 +63,7 @@ export function gameStats({ pieces = [], moves = [], seat = 0, plies = 0 } = {})
     alive, bySeat, attacks, won, traded, lost, minesDug, bombsSpent, myCommanderAlive,
     // Lynch：「同歸於盡應該算贏，因為不虧。」
     winRate: attacks ? (won + traded) / attacks : null,
-    bombBonus, bombKills, flagsTaken, myFlagsTaken, myFlagLost, topKills,
+    bombBonus, bombKills, bombKillers, outSeats: Object.keys(outAt).map(Number), flagsTaken, myFlagsTaken, myFlagLost, topKills,
     plies,
   };
 }

@@ -18,6 +18,7 @@ export function createGame(layouts) {          // layouts: { [seat]: {nodeId: �
   return {
     at, turn: 0, status: 'playing',
     eliminated: new Set(), revealedFlags: new Set(),
+    outAt: {},   // 各家出局當下的大子與炸彈數（結算表要看「被扛旗前」，出局後棋子會被清掉）
     plies: 0, pliesSinceCapture: 0, result: null, log: [],
   };
 }
@@ -50,6 +51,9 @@ function killPiece(state, id, events) {         // 移除單一棋子，並處�
 function eliminate(state, seat, reason, events) {   // §5.2 該家棋子全部毀滅、轉觀戰
   if (state.eliminated.has(seat)) return;
   state.eliminated.add(seat);
+  const snap = { 司令: 0, 軍長: 0, 師長: 0, 炸彈: 0 };
+  for (const o of state.at.values()) if (o.seat === seat && o.piece in snap) snap[o.piece]++;
+  (state.outAt ??= {})[seat] = snap;
   for (const [id, o] of [...state.at]) if (o.seat === seat) state.at.delete(id);
   events.push({ type: 'eliminated', seat, reason });
 }

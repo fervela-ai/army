@@ -6,17 +6,17 @@
 // 之後加一個 remoteSession（fetch 到 Cloudflare Worker），畫面那邊一行都不用改。
 //
 // 所有方法都是 async——即使本機版根本不用等。這樣換成連線版時，呼叫端不必重寫。
-import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=250';
-import { gameStats } from '../engine/src/game-tally.mjs?v=250';
-import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=250';
+import { SEATS, TEAM_OF } from '../engine/src/board.mjs?v=251';
+import { gameStats } from '../engine/src/game-tally.mjs?v=251';
+import { legalMoves, validateSetup, movePath } from '../engine/src/rules.mjs?v=251';
 import {
   createRoom, join, claimSeat, startSetup, submitLayout, maybeStartGame,
   play, stateForPlayer,
-} from '../engine/src/room.mjs?v=250';
-import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=250';
-import { VALUE } from '../engine/ai/lookahead.mjs?v=250';
-import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=250';
-import { searchMove } from '../engine/ai/search.mjs?v=250';
+} from '../engine/src/room.mjs?v=251';
+import { doctrineLayout } from '../engine/ai/doctrine-layout.mjs?v=251';
+import { VALUE } from '../engine/ai/lookahead.mjs?v=251';
+import { chooseMove, createMemory, observe, noteOwnMove } from '../engine/ai/ai.mjs?v=251';
+import { searchMove } from '../engine/ai/search.mjs?v=251';
 
 // controllers：四個座位分別由誰控制。'ai' 或玩家代號（'A'、'B'）。
 // 所有模式都只是這張表的不同填法——引擎那層本來就是用「座位→玩家」在跑的：
@@ -36,6 +36,10 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
     claimSeat(room, pid, s);
   }
   startSetup(room, Date.now());
+  // 單人練習只有一個真人、對手全是電腦：沒人在等，佈陣不限時（Miles 2026-10-28「單人局，佈陣不卡時間」）
+  if (controllers.filter(c => c !== 'ai').length === 1) {
+    room.setupDeadline = Infinity;
+  }
   const memories = Object.fromEntries(SEATS.map(s => [s, createMemory(s)]));
   const record = [];
   const isAI = (seat) => controllers[seat] === 'ai';
@@ -163,6 +167,7 @@ export function localSession({ controllers = ['A', 'ai', 'ai', 'ai'], useSearch 
     stats: async (seat) => gameStats({
       pieces: room.game ? [...room.game.at.values()] : [],
       moves: record, seat, plies: room.game?.plies ?? 0,
+      outAt: room.game?.outAt ?? {},
     }),
 
     record: async () => ({ layouts: room.layouts, moves: record }),

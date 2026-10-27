@@ -50,12 +50,17 @@ const bar = (cx, cy, w) => el('rect', {
 
 // 規格：docs/piece-symbols-spec.md（2026-08-29 用手機真實尺寸 19.8×18.9 目視定案）
 // 座標以中心為原點；規格寫的是 viewBox 0 0 32 30，中心 (16,15)，這裡一律減掉。
-// 「品字形」＝一上二下，三顆以內人眼不用數，這是整套符號的前提。
+// 三顆以內人眼不用數，這是整套符號的前提；三顆原本是品字形，10/28 改橫排（見下）。
+// 三顆改成橫排（Miles 2026-10-28：「三角形排列很容易凸出去」「三顆並排比較好看」）：
+// 品字形的上面那顆會頂到棋子上緣、跟下面的字打架；橫排只用中間一條高度。
+// 橫排要塞進 32 寬，所以三顆的星與梅花都略縮小（TRIPLE_SCALE）。
 const SLOTS = {
-  3: [[0, -6.5], [-6.7, 5], [6.7, 5]],
+  3: [[-9.6, 0], [0, 0], [9.6, 0]],
   2: [[-6.7, 0], [6.7, 0]],
   1: [[0, 0]],
 };
+
+const TRIPLE_SCALE = 0.68;
 
 export function insignia(piece) {
   const spec = RANK_INSIGNIA[piece];
@@ -64,11 +69,11 @@ export function insignia(piece) {
 
   if (spec.kind === 'star') {
     // 每顆星一律同尺寸，不因數量放大——否則「一顆星」看起來比「三顆星」還重。
-    for (const [x, y] of SLOTS[spec.count]) g.appendChild(star(x, y, 7.4));
+    for (const [x, y] of SLOTS[spec.count]) g.appendChild(star(x, y, spec.count === 3 ? 7.4 * TRIPLE_SCALE : 7.4));
   } else if (spec.kind === 'plum') {
     // 梅花要收小：同半徑下五瓣梅花的填色面積約為五角星的三倍，
     // 不收小的話階級高的反而看起來弱。
-    for (const [x, y] of SLOTS[spec.count]) g.appendChild(plum(x, y, 5.9));
+    for (const [x, y] of SLOTS[spec.count]) g.appendChild(plum(x, y, spec.count === 3 ? 5.9 * 0.78 : 5.9));
   } else if (spec.kind === 'bar') {
     const gap = 5.2;
     const start = -((spec.count - 1) * gap) / 2;
